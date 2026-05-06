@@ -106,6 +106,15 @@ export function readState(cwd: string): ArState {
       return;
     }
 
+    if (typed.type === "decision") {
+      const decision = event as ArDecision;
+      if (!Number.isInteger(decision.run) || decision.run <= 0) state.parseErrors.push(`line ${index + 1}: decision.run must be a positive integer`);
+      if (!["keep", "discard", "baseline", "stop"].includes(decision.action)) state.parseErrors.push(`line ${index + 1}: invalid decision.action`);
+      state.decisions.push(decision);
+      seenActions.set(decision.run, decision.action);
+      return;
+    }
+
     if (typed.type === "result" || (event as ArResult).run !== undefined) {
       const normalized = normalizeResult(event as ArResult, state.config);
       if (!normalized) {
@@ -117,15 +126,6 @@ export function readState(cwd: string): ArState {
       if (["keep", "discard"].includes(normalized.status)) {
         seenActions.set(normalized.run, normalized.status as "keep" | "discard");
       }
-      return;
-    }
-
-    if (typed.type === "decision") {
-      const decision = event as ArDecision;
-      if (!Number.isInteger(decision.run) || decision.run <= 0) state.parseErrors.push(`line ${index + 1}: decision.run must be a positive integer`);
-      if (!["keep", "discard", "baseline", "stop"].includes(decision.action)) state.parseErrors.push(`line ${index + 1}: invalid decision.action`);
-      state.decisions.push(decision);
-      seenActions.set(decision.run, decision.action);
       return;
     }
 

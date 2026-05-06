@@ -20,10 +20,12 @@
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
-    "validate": "npm test && npm run typecheck"
+    "test:ts": "tsx --test tests-ts/*.test.ts",
+    "validate": "npm test && npm run test:ts && npm run typecheck"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",
+    "tsx": "^4.20.6",
     "typescript": "^5.7.0"
   },
   "peerDependencies": {
