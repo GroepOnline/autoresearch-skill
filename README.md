@@ -71,10 +71,53 @@ Commands:
 /autoresearch status
 /autoresearch new <goal>
 /autoresearch start [max_runs] [max_minutes]
+/autoresearch ralph [max_runs] [max_minutes]
 /autoresearch pause
 /autoresearch resume
 /autoresearch dashboard
+/autoresearch validate
 ```
+
+### Modes
+
+- **Assisted** (`/autoresearch start`) — Full autonomous loop with user oversight. Each run gets context injection + budget; user approves continuation.
+- **Ralph Wiggum** (`/autoresearch ralph`) — Fully autonomous naive-explorer mode. Simplest hypotheses first, max ~10 line diffs, runs until budget or safety stop. Named after the blissfully simple character.
+
+### Custom Tools
+
+| Tool | Purpose |
+|------|---------|
+| `autoresearch_state` | Read and validate JSONL state (config, runs, best, baseline) |
+| `autoresearch_metric` | Parse METRIC lines from benchmark output, compute median + noise CV |
+| `autoresearch_decide` | Policy-driven keep/discard/stop decision against current best |
+| `autoresearch_dashboard` | Generate markdown dashboard from JSONL |
+
+### Stop Conditions
+
+The loop automatically stops on:
+
+- Budget exhausted (runs or minutes)
+- Explicit `stop` decision from `autoresearch_decide`
+- 5 consecutive discards (no progress being made)
+- Plateau — 10 runs without improvement
+- Diff-size violation (50 lines assisted, 10 lines Ralph mode)
+- Pause sentinel (`.autoresearch-off`)
+- Corrupt JSONL state
+- Dirty git working tree at loop start
+- Correctness test failures
+- Benchmark noise exceeding configured threshold
+
+### Key Features
+
+- **Experiment provenance** — Git commit hash auto-captured per metric measurement
+- **Noise-adaptive sampling** — CV (coefficient of variation) computed; warns when benchmark is too noisy
+- **Multi-metric tracking** — Secondary metrics shown in context as sub-rows
+- **Snapshot generation** — `AUTORESEARCH_STATE.json` written on every context injection
+- **Run duration tracking** — Per-run elapsed time shown in context
+- **Stop summary reports** — `experiments/summary-{ts}.md` generated on loop stop
+- **Context injection** — Auto-generated "Recently Tried" table + stats in `before_agent_start`
+- **Deduplication hints** — Last 5 unique descriptions shown to prevent repeated hypotheses
+- **Session persistence** — Consecutive discard and plateau counters survive session restarts via JSONL re-derivation
 
 ## Helper scripts
 

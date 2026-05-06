@@ -47,3 +47,9 @@ jobs:
         run: |
           set -euo pipefail
           npm run typecheck
+
+      - name: Run TypeScript tests
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          npm run test:ts
