@@ -1,600 +1,174 @@
 ---
-name: autoresearch
-description: Set up and run an autonomous experiment loop for any optimization target. Use when asked to start autoresearch or run experiments.
+name: pi-autoresearch
+description: Run self-improving optimization loops that benchmark strategies against baseline, track metrics forever, and auto-select best approaches. Use when you need to find optimal solutions through iterative experimentation without human intervention.
 ---
 
-# Autoresearch
+## When to Use
 
-Autonomous experiment loop: try ideas, keep what works, discard what doesn't, never stop.
+- Optimizing algorithms, compression, or any measurable process
+- Finding best strategy among multiple candidates automatically
+- Running "forever loops" that improve until stopped
+- Benchmarking deterministic approaches without LLM calls
 
-## Setup
+## Core Pattern
 
-## Model Strategy
+```
+┌─────────────────────────────────────────┐
+│  BASELINE: Record initial metric value   │
+└────────────────┬────────────────────────┘
+                   │
+       ┌───────────▼───────────┐
+       │   RUN EXPERIMENT #N    │
+       │  (deterministic, fast) │
+       └───────────┬───────────┘
+                   │
+       ┌───────────▼───────────┐
+       │   METRIC IMPROVED?    │
+       │  (vs baseline/best)   │
+       └─────┬─────────┬───────┘
+             │ YES     │ NO
+             │         │
+   ┌─────────▼──┐  ┌───▼────────┐
+   │  KEEP IT   │  │  DISCARD   │
+   │ new best!  │  │  try next  │
+   └────────────┘  └────────────┘
+             │         │
+             └────┬────┘
+                  │
+            LOOP FOREVER
+```
 
-Multi-model aanpak voor optimale performance en kosten:
+## Setup Requirements
 
-| Fase | Model | ID | Waarom |
-|---|---|---|---|
-| **Experiment run** | DeepSeek V4 Flash | `azure-deepseek/DeepSeek-V4-Flash` | Snel, goedkoop per-token |
-| **Hypothesis generatie** | FW-GLM-5.1 | `azure-fireworks/fw-glm-5-1` | Multi-step reasoning, pattern detection |
-| **Alternatief** | Claude Opus 4.6 | `github-copilot/claude-opus-4.6` | Strong reasoning via Copilot |
-| **Crash debugging** | GPT-5.4 | `github-copilot/gpt-5.4` | Codex-quality code analysis |
-| **Orchestration** | Kimi K2.6 | `azure-kimi-26/Kimi-K2.6` | Long context, deployment |
+### 1. Benchmark Harness (`tests/autoresearch-*.test.ts`)
 
-### Model Switching in Practice
+Must emit `METRIC name=value` line(s) and complete in ≤100ms:
+
+```typescript
+test("measures fallback latency", async () => {
+  const start = Date.now();
+  await runAgent(request);
+  const latency = Date.now() - start;
+  expect(latency).toBeLessThan(5);
+  console.log(`METRIC fallback_latency_ms=${latency}`);
+});
+```
+
+See skill `autoresearch-benchmark-harness` for full template.
+
+### 2. Shell Wrapper (`autoresearch.sh`)
 
 ```bash
-# Experiment run (snel, goedkoop)
-pi --model azure-deepseek/DeepSeek-V4-Flash -p "$PROMPT"
+#!/usr/bin/env bash
+set -euo pipefail
 
-# Hypothesis generation (reasoning)
-pi --model azure-fireworks/fw-glm-5-1 -p "$ANALYSIS_PROMPT"
-
-# Crash debugging (code expert)
-pi --model github-copilot/gpt-5.4 -p "$CRASH_ANALYSIS"
-
-# Orchestration (long context)
-pi --model azure-kimi-26/Kimi-K2.6 -p "$ORCHESTRATION_TASK"
+OUT=$(npm test --silent -- tests/autoresearch-fallback-latency.test.ts 2>&1)
+METRIC=$(printf '%s\n' "$OUT" | grep -Eo 'METRIC [^=]+=[0-9.]+' | head -1)
+echo "$METRIC"
 ```
 
-### Automatic Model Selection
-
-De loop kiest automatisch op basis van taak:
-
-1. **Run experiment** → DeepSeek (speed/cost)
-2. **Analyse result** → FW-GLM-5.1 of Opus 4.6 (reasoning)
-3. **Debug crash** → GPT-5.4 (code analysis)
-4. **Deploy/summarize** → Kimi K2.6 (long context)
-
-
-1. Ask (or infer): **Goal**, **Command**, **Metric** (+ direction), **Files in scope**, **Constraints**.
-2. `git checkout -b autoresearch/<goal>-<date>`
-3. Read the source files. Understand the workload deeply before writing anything.
-4. `mkdir -p experiments` then write `autoresearch.md`, `autoresearch.sh`, and `experiments/worklog.md` (see below). Commit all three.
-5. Initialize experiment (write config header to `autoresearch.jsonl`) → run baseline → log result → start looping immediately.
-
-### `autoresearch.md`
-
-This is the heart of the session. A fresh agent with no context should be able to read this file and run the loop effectively. Invest time making it excellent.
-
-```markdown
-# Autoresearch: <goal>
-
-## Objective
-<Specific description of what we're optimizing and the workload.>
-
-## Metrics
-- **Primary**: <name> (<unit>, lower/higher is better)
-- **Secondary**: <name>, <name>, ...
-
-## How to Run
-`./autoresearch.sh` — outputs `METRIC name=number` lines.
-
-## Files in Scope
-<Every file the agent may modify, with a brief note on what it does.>
-
-## Off Limits
-<What must NOT be touched.>
-
-## Constraints
-<Hard rules: tests must pass, no new deps, etc.>
-
-## What's Been Tried
-<Update this section as experiments accumulate. Note key wins, dead ends,
-and architectural insights so the agent doesn't repeat failed approaches.>
-```
-
-Update `autoresearch.md` periodically — especially the "What's Been Tried" section — so resuming agents have full context.
-
-### `autoresearch.sh`
-
-Bash script (`set -euo pipefail`) that: pre-checks fast (syntax errors in <1s), runs the benchmark, outputs `METRIC name=number` lines. Keep it fast — every second is multiplied by hundreds of runs. Update it during the loop as needed.
-
----
-
-## JSONL State Protocol
-
-All experiment state lives in `autoresearch.jsonl`. This is the source of truth for resuming across sessions.
-
-### Config Header
-
-The first line (and any re-initialization line) is a config header:
+### 3. State File (`AUTORESEARCH_STATE.json`)
 
 ```json
-{"type":"config","name":"<session name>","metricName":"<primary metric name>","metricUnit":"<unit>","bestDirection":"lower|higher"}
-```
-
-Rules:
-- First line of the file is always a config header.
-- Each subsequent config header (re-init) starts a new **segment**. Segment index increments with each config header.
-- The baseline for a segment is the first result line after the config header.
-
-### Result Lines
-
-Each experiment result is appended as a JSON line:
-
-```json
-{"run":1,"commit":"abc1234","metric":42.3,"metrics":{"secondary_metric":123},"status":"keep","description":"baseline","timestamp":1234567890,"segment":0}
-```
-
-Fields:
-- `run`: sequential run number (1-indexed, across all segments)
-- `commit`: 7-char git short hash (the commit hash AFTER the auto-commit for keeps, or current HEAD for discard/crash)
-- `metric`: primary metric value (0 for crashes)
-- `metrics`: object of secondary metric values — **once you start tracking a secondary metric, include it in every subsequent result**
-- `status`: `keep` | `discard` | `crash`
-- `description`: short description of what this experiment tried
-- `timestamp`: Unix epoch seconds
-- `segment`: current segment index
-
-### Initialization (equivalent of `init_experiment`)
-
-To initialize, write the config header to `autoresearch.jsonl`:
-
-```bash
-echo '{"type":"config","name":"<name>","metricName":"<metric>","metricUnit":"<unit>","bestDirection":"<lower|higher>"}' > autoresearch.jsonl
-```
-
-To re-initialize (change optimization target), **append** a new config header:
-
-```bash
-echo '{"type":"config","name":"<name>","metricName":"<metric>","metricUnit":"<unit>","bestDirection":"<lower|higher>"}' >> autoresearch.jsonl
-```
-
----
-
-## Data Integrity Protocol
-
-**CRITICAL: JSONL data must never be corrupted or lost.**
-
-### Pre-Write Validation (before appending to JSONL)
-
-Before writing any new experiment result, validate the JSONL file:
-
-```bash
-# Validate JSONL file before writing
-validate_jsonl() {
-    local jsonl_file="autoresearch.jsonl"
-    
-    if [[ -f "$jsonl_file" ]]; then
-        # Count existing runs
-        local run_count=$(grep -c '"run":' "$jsonl_file" 2>/dev/null || echo 0)
-        echo "Current runs in JSONL: $run_count" >&2
-        
-        # Verify last 5 lines are valid JSON
-        tail -n 5 "$jsonl_file" 2>/dev/null | while IFS= read -r line; do
-            if ! echo "$line" | python3 -m json.tool >/dev/null 2>&1; then
-                echo "WARNING: Invalid JSON found in state file" >&2
-                return 1
-            fi
-        done
-        
-        echo "JSONL validation: OK" >&2
-        return 0
-    fi
-    return 0  # File doesn't exist yet, that's OK
-}
-
-# Call validation before any write
-validate_jsonl || {
-    echo "  WARNING: JSONL validation failed. Proceeding with caution." >&2
+{
+  "experiment": "fallback-latency-20260506",
+  "baseline": { "fallback_latency_ms": 507 },
+  "runs": [],
+  "best": { "run": 1, "fallback_latency_ms": 507 }
 }
 ```
 
-### Atomic Write Pattern (EXDEV-Safe)
+## Procedure
 
-**WAARSCHUWING:** Gebruik **nooit** `mv` over filesystem grenzen (bijv. `/tmp` tmpfs → `/home` ext4). Dit faalt met `EXDEV: cross-device link not permitted`. Schrijf de temp file altijd **naast** het doelbestand (`${jsonl_file}.tmp.$$`), gebruik dan `cp + rm` i.p.v. `mv`.
+1. **Establish baseline**: Run current code, record initial metric
+2. **Create experiment branch**: `git checkout -b opt/remove-backoff`
+3. **Make ONE focused change** (≤20 lines diff)
+4. **Run harness**: `./autoresearch.sh`
+5. **Compare metric**:
+   - `< best_so_far` → `KEEP` (new best)
+   - `> baseline` → `DISCARD`
+   - `> baseline && < best` → `KEEP` (incremental progress)
+6. **Record decision**: Append to `AUTORESEARCH_LOG.md`
+7. **If KEEP**: keep commit; if `DISCARD`: `git reset --hard HEAD~`
+8. **Repeat** until 5 consecutive discards or 10 runs without improvement
 
-```bash
-write_jsonl_entry() {
-    local entry="$1"
-    local jsonl_file="autoresearch.jsonl"
-    # CRITICAL: temp file op ZELFDE filesystem als target (naast het bestand, niet in /tmp)
-    local temp_file="${jsonl_file}.tmp.$$"
+## Decision Matrix
 
-    # Copy bestaande content naar temp
-    if [[ -f "$jsonl_file" ]]; then
-        cp "$jsonl_file" "$temp_file" || {
-            echo "  ERROR: Kan temp file niet aanmaken" >&2
-            return 1
-        }
-    else
-        touch "$temp_file"
-    fi
+| Condition | Action | Rationale |
+|-----------|--------|-----------|
+| `metric < best` | ✅ KEEP — new best | Always keep improvements |
+| `metric == best` | ❌ DISCARD (unless simplification) | No gain, extra complexity |
+| `metric > baseline && metric < best` | ✅ KEEP | Incremental progress |
+| `metric > best` | ❌ DISCARD | Pure regression |
+| Any test failure | ❌ DISCARD immediately | Functional correctness > perf |
 
-    # Voeg entry toe
-    echo "$entry" >> "$temp_file"
+## Logging Format
 
-    # Valideer de nieuwe entry
-    if ! echo "$entry" | python3 -m json.tool >/dev/null 2>&1; then
-        rm -f "$temp_file"
-        echo "  WARNING: Ongeldige JSON entry, niet schrijven" >&2
-        return 1
-    fi
-
-    # EXDEV-safe atomic replace: cp (overschrijf) dan rm temp
-    cp "$temp_file" "$jsonl_file" || {
-        rm -f "$temp_file"
-        echo "  ERROR: Schrijven naar JSONL mislukt" >&2
-        return 1
-    }
-    rm -f "$temp_file"
-    sync "$jsonl_file" 2>/dev/null || true  # flush naar schijf
-
-    # Verificatie
-    local new_count
-    new_count=$(grep -c '"run":' "$jsonl_file" 2>/dev/null || echo 0)
-    echo "Write verification: $new_count runs in JSONL" >&2
-
-    return 0
-}
-```
-
-### Post-Write Verification
-
-After every write operation, verify the data was written correctly:
-
-```bash
-verify_write() {
-    local expected_run=$1
-    local jsonl_file="autoresearch.jsonl"
-    
-    if [[ -f "$jsonl_file" ]]; then
-        local actual_count=$(grep -c '"run":' "$jsonl_file" 2>/dev/null || echo 0)
-        
-        if [[ "$actual_count" -lt "$expected_run" ]]; then
-            echo "  WARNING: Run count mismatch! Expected $expected_run, got $actual_count" >&2
-            echo "This may indicate data loss in previous writes." >&2
-            return 1
-        fi
-        
-        echo "Write verification: OK (run $expected_run present)" >&2
-        return 0
-    fi
-    return 1
-}
-```
-
----
-
-### User-Confirmable Actions
-
-Before any user-confirmable action (e.g., manual intervention, major changes, discarding multiple experiments), create a backup:
-
-```bash
-# Backup state before user-confirmable action
-backup_before_confirm() {
-    echo "  User confirmation required. Creating backup..." >&2
-    
-    # Use backup utility if available
-    if [[ -f "./scripts/backup-state.sh" ]]; then
-        ./scripts/backup-state.sh backup autoresearch.jsonl 2>/dev/null || true
-    else
-        # Fallback: simple backup
-        cp autoresearch.jsonl "autoresearch.jsonl.backup.$(date +%s)" 2>/dev/null || true
-    fi
-    
-    echo "Backup created. Awaiting user confirmation..." >&2
-}
-```
-
-**Always call `backup_before_confirm` before any operation that requires user approval.**
-
----
-
-### Dashboard Data Consistency Check
-
-When generating the dashboard, check for data consistency:
-
-#### Data Consistency Check
-
-If the number of runs in `autoresearch.jsonl` doesn't match the number of entries in `experiments/worklog.md`:
-
-1. **Check for backups**: `scripts/backup-state.sh list autoresearch.jsonl`
-2. **If backups exist**: Restore with `scripts/backup-state.sh restore-auto`
-3. **If no backups**: Manually recreate missing runs from worklog notes
-4. **Note the discrepancy** in the dashboard header
-
-Add this warning banner to the dashboard when inconsistency is detected:
-
+`AUTORESEARCH_LOG.md`:
 ```markdown
- **DATA INCONSISTENCY DETECTED**
-
-- **Worklog documents**: <WORKLOG_RUN_COUNT> experiments
-- **JSONL contains**: <JSONL_RUN_COUNT> runs
-- **Missing**: <DIFF> runs **LOST!**
-
-**Recovery steps:**
-1. Check backups: `scripts/backup-state.sh list autoresearch.jsonl`
-2. Restore if available: `scripts/backup-state.sh restore-auto`
-3. Otherwise, manually recreate missing runs from worklog
+## Run #2 — 2026-05-06T14:00:00+02:00
+- Metric: `METRIC fallback_latency_ms=2`
+- Action: **KEEP** — new best (-99.6% vs baseline)
+- Change: "Remove backoff while walking explicit fallbackModels chain"
+- Diff: `git show HEAD~2 --stat` (2 files, 4 insertions, 2 deletions)
+- Hypothesis: Eliminating sleep() between fallback attempts reduces latency
+- Verification: All fallback/cache tests still pass
 ```
 
----
-
-## Running Experiments (equivalent of `run_experiment`)
-
-Run the benchmark command, capturing timing and output:
-
-```bash
-START_TIME=$(date +%s%N)
-bash -c "./autoresearch.sh" 2>&1 | tee /tmp/autoresearch-output.txt
-EXIT_CODE=$?
-END_TIME=$(date +%s%N)
-DURATION=$(echo "scale=3; ($END_TIME - $START_TIME) / 1000000000" | bc)
-echo "Duration: ${DURATION}s, Exit code: ${EXIT_CODE}"
-```
-
-After running:
-- Parse `METRIC name=number` lines from the output to extract metric values
-- If exit code != 0 → this is a crash
-- Read the output to understand what happened
-
----
-
-## Logging Results (equivalent of `log_experiment`)
-
-After each experiment run, follow this exact protocol:
-
-### 1. Determine status
-
-- **keep**: primary metric improved (lower if `bestDirection=lower`, higher if `bestDirection=higher`)
-- **discard**: primary metric worse or equal to best kept result
-- **crash**: command failed (non-zero exit code)
-
-Secondary metrics are for monitoring only — they almost never affect keep/discard decisions. Only discard a primary improvement if a secondary metric degraded catastrophically, and explain why in the description.
-
-### 2. Git operations
-
-**If keep:**
-```bash
-git add -A
-git diff --cached --quiet && echo "nothing to commit" || git commit -m "<description>
-
-Result: {\"status\":\"keep\",\"<metricName>\":<value>,<secondary metrics>}"
-```
-
-Then get the new commit hash:
-```bash
-git rev-parse --short=7 HEAD
-```
-
-**If discard or crash:**
-```bash
-git checkout -- .
-git clean -fd
-```
-
-Use the current HEAD hash (before revert) as the commit field.
-
-### 3. Append result to JSONL
-
-```bash
-echo '{"run":<N>,"commit":"<hash>","metric":<value>,"metrics":{<secondaries>},"status":"<status>","description":"<desc>","timestamp":'$(date +%s)',"segment":<seg>}' >> autoresearch.jsonl
-```
-
-### 4. Update dashboard
-
-After every log, regenerate `autoresearch-dashboard.md` (see Dashboard section below).
-
-### 5. Append to worklog
-
-After every experiment, append a concise entry to `experiments/worklog.md`. This file survives context compactions and crashes, giving any resuming agent (or the user) a complete narrative of the session. Format:
-
-```markdown
-### Run N: <short description> — <primary_metric>=<value> (<STATUS>)
-- Timestamp: YYYY-MM-DD HH:MM
-- What changed: <1-2 sentences describing the code/config change>
-- Result: <metric values>, <delta vs best>
-- Insight: <what was learned, why it worked/failed>
-- Next: <what to try next based on this result>
-```
-
-Also update the "Key Insights" and "Next Ideas" sections at the bottom of the worklog when you learn something new.
-
-**On setup**, create `experiments/worklog.md` with the session header, data summary, and baseline result. **On resume**, read `experiments/worklog.md` to recover context.
-
-### 6. Secondary metric consistency
-
-Once you start tracking a secondary metric, you MUST include it in every subsequent result. Parse the JSONL to discover which secondary metrics have been tracked and ensure all are present.
-
-If you want to add a new secondary metric mid-session, that's fine — but from that point forward, always include it.
-
----
-
-## Dashboard
-
-After each experiment, regenerate `autoresearch-dashboard.md`:
-
-```markdown
-# Autoresearch Dashboard: <name>
-
-**Runs:** 12 | **Kept:** 8 | **Discarded:** 3 | **Crashed:** 1
-**Baseline:** <metric_name>: <value><unit> (#1)
-**Best:** <metric_name>: <value><unit> (#8, -26.2%)
-
-| # | commit | <metric_name> | status | description |
-|---|--------|---------------|--------|-------------|
-| 1 | abc1234 | 42.3s | keep | baseline |
-| 2 | def5678 | 40.1s (-5.2%) | keep | optimize hot loop |
-| 3 | abc1234 | 43.0s (+1.7%) | discard | try vectorization |
-...
-```
-
-Include delta percentages vs baseline for each metric value. Show ALL runs in the current segment (not just recent ones).
-
----
-
-## State File Backup (Enhanced)
-
-**BEFORE user-confirmable actions**, create backups:
-
-```bash
-# Before any major operation requiring user confirmation
-if [[ -f "./scripts/backup-state.sh" ]]; then
-    ./scripts/backup-state.sh backup autoresearch.jsonl 2>/dev/null || true
-else
-    cp autoresearch.jsonl "autoresearch.jsonl.backup.$(date +%s)" 2>/dev/null || true
-fi
-```
-
-**Best practices**:
-- Always backup before major changes or user confirmations
-- Keep the last 5 backups (delete older ones)
-- Restore from backup if experiment crashes or state becomes corrupted
-
-**Automated cleanup**:
-```bash
-# Keep only last 5 backups
-ls -t autoresearch.jsonl.bak.* 2>/dev/null | tail -n +6 | xargs rm -f 2>/dev/null || true
-```
-
-**Warning**: If JSONL data loss is detected, check backups immediately before continuing.
-
----
-
-## Data Loss Detection and Recovery
-
-**If you detect data loss** (e.g., dashboard shows inconsistency, JSONL count doesn't match worklog):
-
-1. **Immediate actions**:
-   ```bash
-   # Check for data loss
-   JSONL_COUNT=$(grep -c '"run":' autoresearch.jsonl 2>/dev/null || echo 0)
-   WORKLOG_COUNT=$(grep -c "^### Run" experiments/worklog.md 2>/dev/null || echo 0)
-   
-   if [[ "$JSONL_COUNT" -ne "$WORKLOG_COUNT" ]]; then
-       echo "  DATA LOSS DETECTED: JSONL has $JSONL_COUNT runs, worklog has $WORKLOG_COUNT runs" >&2
-   fi
-   ```
-
-2. **Check backups**:
-   ```bash
-   ./scripts/backup-state.sh list autoresearch.jsonl
-   ```
-
-3. **Recovery options**:
-   - **Best**: Restore from backup if recent enough
-   - **Alternative**: Manually recreate missing runs from worklog notes
-   - **Last resort**: Start new segment with new config header
-
-4. **Prevention**: Always backup before user-confirmable actions (see "User-Confirmable Actions" above)
-
----
-
-## Loop Rules
-
-**LOOP FOREVER.** Never ask "should I continue?" — the user expects autonomous work.
-
-- **Primary metric is king.** Improved → `keep`. Worse/equal → `discard`. Secondary metrics rarely affect this.
-- **Simpler is better.** Removing code for equal perf = keep. Ugly complexity for tiny gain = probably discard.
-- **Don't thrash.** Repeatedly reverting the same idea? Try something structurally different.
-- **Crashes:** fix if trivial, otherwise log and move on. Don't over-invest.
-- **Think longer when stuck.** Re-read source files, study the profiling data, reason about what the CPU is actually doing. The best ideas come from deep understanding, not from trying random variations.
-- **Resuming:** if `autoresearch.md` exists, first check if `autoresearch.jsonl` exists:
-  - If it exists: read it + `experiments/worklog.md` + git log, continue looping
-  - If it doesn't exist: see "Missing State File" section below (fallback behavior)
-
-**NEVER STOP.** The user may be away for hours. Keep going until interrupted.
-
-## Missing State File
-
-If `autoresearch.jsonl` is missing when resuming:
-
-1. **Preserve context from `autoresearch.md`** - Read the objective, metrics, and files in scope
-2. **Ask for user confirmation** - "State file missing. Options:
-   - A) Create new state (fresh start)
-   - B) Continue with autoresearch.md context only
-   - C) Restore from backup (if available)
-"
-3. **If fresh start**: initialize new JSONL with config header
-4. **If continuing with context only**: proceed with autoresearch.md data but note the limitation
-
-## Ideas Backlog
-
-When you discover complex but promising optimizations that you decide not to pursue right now, **append them as bullet points to `autoresearch.ideas.md`**. Don't let good ideas get lost.
-
-If the loop stops (context limit, crash, etc.) and `autoresearch.ideas.md` exists, you'll be asked to:
-1. Read the ideas file and use it as inspiration for new experiment paths
-2. Prune ideas that are duplicated, already tried, or clearly bad
-3. Create experiments based on the remaining ideas
-4. If nothing is left, try to come up with your own new ideas
-5. If all paths are exhausted, delete `autoresearch.ideas.md` and write a final summary report
-
-When there is no `autoresearch.ideas.md` file and the loop ends, the research is complete.
-
-## User Steers
-
-User messages sent while an experiment is running should be noted and incorporated into the NEXT experiment. Finish your current experiment first — don't stop or ask for confirmation. Incorporate the user's idea in the next experiment.
-
-## Updating autoresearch.md
-
-Periodically update `autoresearch.md` — especially the "What's Been Tried" section — so that a fresh agent resuming the loop has full context on what worked, what didn't, and what architectural insights have been gained. Do this every 5-10 experiments or after any significant breakthrough.
-
----
-
-## Pi Extension Integration
-
-De pi autoresearch extensie (`extension.ts`) voegt native TUI-integratie toe:
-
-### Installatie
-```bash
-ln -s ~/projects/autoresearch-skill/extension.ts ~/.pi/agent/extensions/autoresearch.ts
-```
-
-### Commands
-
-| Command | Beschrijving |
-|---|---|
-| `/autoresearch new <doel>` | Scaffold wizard: maakt autoresearch.md, autoresearch.sh, experiments/ |
-| `/autoresearch start` | Stuurt loop-instructie naar agent als follow-up |
-| `/autoresearch status` | Toon huidige run, best resultaat, pauzeer-status |
-| `/autoresearch pause` | Schrijft `.autoresearch-off` sentinel — loop stopt na huidige run |
-| `/autoresearch resume` | Verwijdert sentinel — loop hervat |
-| `/autoresearch dashboard` | Toont live dashboard als widget boven de editor |
-
-### Footer Status
-
-De extensie toont een live status in de pi footer:
-```
-🔬 AR:optimize-parser | runs:42 | best:3.2s (-24%)
-⏸ AR:optimize-parser | runs:42 | best:3.2s (-24%) [paused]
-```
-
-### Context Injectie
-
-`before_agent_start` hook injecteert automatisch de loop context + live state als `autoresearch.md` aanwezig is en geen sentinel actief is. Je hoeft de agent niet handmatig te instrueren over de loop regels.
-
-### Compaction Integratie
-
-De `session_before_compact` hook schrijft loop state (run count, best metric, resume instructies) naar de compaction summary. De loop context gaat **niet verloren** bij compaction.
-
----
-
-## Context Window & Compaction Strategie
-
-Als de loop lang loopt, kan het context window vollopen. Strategieën:
-
-1. **Laat custom-compaction.ts zijn werk doen** — de pi autoresearch extensie injecteert loop state in de compaction summary zodat de agent weet waar hij was.
-
-2. **worklog.md overleeft altijd** — na compaction: lees worklog.md voor de narrative context, lees autoresearch.jsonl voor de metrics. Beide zijn on-disk en gaan nooit verloren.
-
-3. **Vermijd compaction tijdens een experiment run** — start geen nieuwe benchmark als de context bijna vol is. Wacht tot de run klaar is, log het resultaat, en laat daarna compaction plaatsvinden.
-
-4. **Als compaction loop breekt**: herstart met:
-   ```
-   Lees autoresearch.md, autoresearch.jsonl en experiments/worklog.md.
-   Ga door met run N+1. LOOP FOREVER.
-   ```
-
----
-
-## Handoff voor Lange Loops
-
-Als je meer dan ~50 runs hebt gehad en de context bijna vol is, gebruik `/handoff` in plaats van compaction:
-
-```
-/handoff Continue autoresearch loop from run 51. Read autoresearch.jsonl and worklog.md for context.
-```
-
-Handoff genereert een gefocust prompt met alle relevante context en opent een nieuwe sessie. De nieuwe sessie pikt de loop op zonder context-verlies.
+## Variable Isolation Rule
+
+**One optimization per run.** Never bundle multiple independent changes:
+- ❌ Bad: "Remove backoff + bypass cache key gen + reuse backend"
+- ✅ Good: Three separate branches, three separate runs
+
+If you suspect two changes interact, verify independently first, then test combined in a separate run.
+
+## Stopping Conditions
+
+- **5 consecutive DISCARD** with no improvement → local maximum
+- **Best metric stable for 10+ runs** → diminishing returns
+- **New direction needed** → start fresh experiment (new `AUTORESEARCH_STATE_*.json`)
+- **Timebox**: Max 30 runs per experiment cycle
+
+## Pitfalls (Lessons from agent-runtime 2026-05-06)
+
+### Noise-Driven Decisions
+- **Symptom**: Metric jumps 1ms → 5ms → 1ms across runs
+- **Fix**: Use **median of 5 runs** in benchmark harness
+- **Rule**: Variability > ±20% → increase run count or investigate GC/CPU noise
+
+### Confounding Variables
+- **Symptom**: Change A "improves" but change B also present
+- **Fix**: Strict **one variable per run**. Max 20 lines diff per commit.
+- **Rule**: `git diff baseline` must show ≤ 20 lines changed.
+
+### Metric vs Reality Gap
+- **Symptom**: Benchmark 1ms, production 100ms
+- **Causes**: Mocks bypass real I/O; metric measures wrong thing
+- **Fix**: Add **sanity-check smoke test** with real backend (slow but indicative). Track both: mock-based (iteration speed) + real-backend (ground truth).
+
+### Backend Reuse Instability
+- **Symptom**: Reusing backend instance across retries reduces object allocation
+- **Reality**: SDK state leakage, session invalidation bugs
+- **Rule**: Keep **one fresh session per run** unless benchmark proves stability over 20+ iterations.
+
+### Cache Bypass Blind Spot
+- **Symptom**: `useCache=false` still pays cache key generation cost
+- **Fix**: Early return before `makeCacheKey()` is called
+- **Metric impact**: 507ms → 1ms (cache bypass + backoff removal were both required)
+
+## Output Artifacts
+
+After loop termination:
+- `AUTORESEARCH_STATE.json` — final best metric and run history
+- `AUTORESEARCH_LOG.md` — human-readable decision trail
+- `METRIC_BASELINE` — original baseline number (immutable reference)
+- `README` updates — document the guaranteed optimization (e.g., "Sub-5ms failover")
+
+## Related Skills
+
+- `autoresearch-benchmark-harness` — harness structure and METRIC output format
+- `autoresearch-fallback-latency` — full case study applying this loop
+- `regression-test-on-optimization` — add constraint tests immediately after each KEEP
+- `fallback-chain-immediate-hop` — core principle (no backoff during chain walk)
+- `cache-bypass-optimization` — eliminating cache overhead when disabled
