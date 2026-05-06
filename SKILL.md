@@ -181,36 +181,51 @@ validate_jsonl || {
 }
 ```
 
-### Atomic Write Pattern
+### Atomic Write Pattern (EXDEV-Safe)
 
-Never append directly to JSONL. Use atomic write pattern:
+**WAARSCHUWING:** Gebruik **nooit** `mv` over filesystem grenzen (bijv. `/tmp` tmpfs → `/home` ext4). Dit faalt met `EXDEV: cross-device link not permitted`. Schrijf de temp file altijd **naast** het doelbestand (`${jsonl_file}.tmp.$$`), gebruik dan `cp + rm` i.p.v. `mv`.
 
 ```bash
 write_jsonl_entry() {
     local entry="$1"
     local jsonl_file="autoresearch.jsonl"
+    # CRITICAL: temp file op ZELFDE filesystem als target (naast het bestand, niet in /tmp)
     local temp_file="${jsonl_file}.tmp.$$"
-    
-    # Create temp file
-    cat "$jsonl_file" > "$temp_file" 2>/dev/null || touch "$temp_file"
-    
-    # Append entry
+
+    # Copy bestaande content naar temp
+    if [[ -f "$jsonl_file" ]]; then
+        cp "$jsonl_file" "$temp_file" || {
+            echo "  ERROR: Kan temp file niet aanmaken" >&2
+            return 1
+        }
+    else
+        touch "$temp_file"
+    fi
+
+    # Voeg entry toe
     echo "$entry" >> "$temp_file"
-    
-    # Validate the new entry
+
+    # Valideer de nieuwe entry
     if ! echo "$entry" | python3 -m json.tool >/dev/null 2>&1; then
         rm -f "$temp_file"
-        echo "  WARNING: Invalid JSON entry, not writing" >&2
+        echo "  WARNING: Ongeldige JSON entry, niet schrijven" >&2
         return 1
     fi
-    
-    # Atomic move (guaranteed all-or-nothing)
-    mv "$temp_file" "$jsonl_file"
-    
-    # Verify write succeeded
-    local new_count=$(grep -c '"run":' "$jsonl_file" 2>/dev/null || echo 0)
+
+    # EXDEV-safe atomic replace: cp (overschrijf) dan rm temp
+    cp "$temp_file" "$jsonl_file" || {
+        rm -f "$temp_file"
+        echo "  ERROR: Schrijven naar JSONL mislukt" >&2
+        return 1
+    }
+    rm -f "$temp_file"
+    sync "$jsonl_file" 2>/dev/null || true  # flush naar schijf
+
+    # Verificatie
+    local new_count
+    new_count=$(grep -c '"run":' "$jsonl_file" 2>/dev/null || echo 0)
     echo "Write verification: $new_count runs in JSONL" >&2
-    
+
     return 0
 }
 ```
@@ -515,3 +530,71 @@ User messages sent while an experiment is running should be noted and incorporat
 ## Updating autoresearch.md
 
 Periodically update `autoresearch.md` — especially the "What's Been Tried" section — so that a fresh agent resuming the loop has full context on what worked, what didn't, and what architectural insights have been gained. Do this every 5-10 experiments or after any significant breakthrough.
+
+---
+
+## Pi Extension Integration
+
+De pi autoresearch extensie (`extension.ts`) voegt native TUI-integratie toe:
+
+### Installatie
+```bash
+ln -s ~/projects/autoresearch-skill/extension.ts ~/.pi/agent/extensions/autoresearch.ts
+```
+
+### Commands
+
+| Command | Beschrijving |
+|---|---|
+| `/autoresearch new <doel>` | Scaffold wizard: maakt autoresearch.md, autoresearch.sh, experiments/ |
+| `/autoresearch start` | Stuurt loop-instructie naar agent als follow-up |
+| `/autoresearch status` | Toon huidige run, best resultaat, pauzeer-status |
+| `/autoresearch pause` | Schrijft `.autoresearch-off` sentinel — loop stopt na huidige run |
+| `/autoresearch resume` | Verwijdert sentinel — loop hervat |
+| `/autoresearch dashboard` | Toont live dashboard als widget boven de editor |
+
+### Footer Status
+
+De extensie toont een live status in de pi footer:
+```
+🔬 AR:optimize-parser | runs:42 | best:3.2s (-24%)
+⏸ AR:optimize-parser | runs:42 | best:3.2s (-24%) [paused]
+```
+
+### Context Injectie
+
+`before_agent_start` hook injecteert automatisch de loop context + live state als `autoresearch.md` aanwezig is en geen sentinel actief is. Je hoeft de agent niet handmatig te instrueren over de loop regels.
+
+### Compaction Integratie
+
+De `session_before_compact` hook schrijft loop state (run count, best metric, resume instructies) naar de compaction summary. De loop context gaat **niet verloren** bij compaction.
+
+---
+
+## Context Window & Compaction Strategie
+
+Als de loop lang loopt, kan het context window vollopen. Strategieën:
+
+1. **Laat custom-compaction.ts zijn werk doen** — de pi autoresearch extensie injecteert loop state in de compaction summary zodat de agent weet waar hij was.
+
+2. **worklog.md overleeft altijd** — na compaction: lees worklog.md voor de narrative context, lees autoresearch.jsonl voor de metrics. Beide zijn on-disk en gaan nooit verloren.
+
+3. **Vermijd compaction tijdens een experiment run** — start geen nieuwe benchmark als de context bijna vol is. Wacht tot de run klaar is, log het resultaat, en laat daarna compaction plaatsvinden.
+
+4. **Als compaction loop breekt**: herstart met:
+   ```
+   Lees autoresearch.md, autoresearch.jsonl en experiments/worklog.md.
+   Ga door met run N+1. LOOP FOREVER.
+   ```
+
+---
+
+## Handoff voor Lange Loops
+
+Als je meer dan ~50 runs hebt gehad en de context bijna vol is, gebruik `/handoff` in plaats van compaction:
+
+```
+/handoff Continue autoresearch loop from run 51. Read autoresearch.jsonl and worklog.md for context.
+```
+
+Handoff genereert een gefocust prompt met alle relevante context en opent een nieuwe sessie. De nieuwe sessie pikt de loop op zonder context-verlies.
