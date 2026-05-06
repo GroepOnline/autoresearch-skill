@@ -30,26 +30,14 @@ jobs:
           node --version
           npm --version
 
-      - name: Run Python tests
-        working-directory: repo
-        run: |
-          set -euo pipefail
-          npm test
-
       - name: Install Node dependencies
         working-directory: repo
         run: |
           set -euo pipefail
           npm install
 
-      - name: Run TypeScript typecheck
+      - name: Run all validation (Python tests, TS tests, typecheck)
         working-directory: repo
         run: |
           set -euo pipefail
-          npm run typecheck
-
-      - name: Run TypeScript tests
-        working-directory: repo
-        run: |
-          set -euo pipefail
-          npm run test:ts
+          npm run validate

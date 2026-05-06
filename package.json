@@ -1,6 +1,6 @@
 {
   "name": "pi-autoresearch",
-  "version": "0.1.0",
+  "version": "0.2.0",
   "private": true,
   "type": "module",
   "keywords": [
@@ -8,6 +8,25 @@
     "pi-extension",
     "autoresearch",
     "benchmark"
+  ],
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GroepChef/autoresearch-skill.git"
+  },
+  "engines": {
+    "node": ">=18"
+  },
+  "files": [
+    "extension.ts",
+    "extensions/",
+    "skills/",
+    "references/",
+    "scripts/",
+    "types/",
+    "LICENSE",
+    "CHANGELOG.md",
+    "README.md",
+    "SKILL.md"
   ],
   "pi": {
     "extensions": [
