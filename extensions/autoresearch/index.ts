@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage, evaluateContinuation, summarizeLoopStop, type LoopContinuation } from "./loop.js";
-import { evaluateToolCall, hasAutoresearchSession, setMaxDiffLines } from "./policy.js";
+import { evaluateToolCall, hasAutoresearchSession } from "./policy.js";
 import { buildContextInjection, delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { footerText } from "./ui.js";
 import { registerAutoresearchTools } from "./tools.js";

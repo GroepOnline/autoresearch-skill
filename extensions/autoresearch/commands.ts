@@ -3,7 +3,7 @@ import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./loop.js";
-import { buildContinuationMessage, summarizeLoopStop } from "./loop.js";
+import { buildContinuationMessage } from "./loop.js";
 import { setMaxDiffLines } from "./policy.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
