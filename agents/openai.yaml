@@ -1,0 +1,5 @@
+interface:
+  display_name: Autoresearch
+  short_description: Run bounded benchmark-driven optimization loops with safe state tracking.
+  icon: microscope
+  brand_color: "#111827"
