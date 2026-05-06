@@ -1,0 +1,19 @@
+node_modules/
+coverage/
+dist/
+.pytest_cache/
+__pycache__/
+*.pyc
+
+# Autoresearch runtime artifacts
+autoresearch.md
+autoresearch.jsonl
+AUTORESEARCH_STATE*.json
+AUTORESEARCH_LOG.md
+autoresearch-dashboard.md
+autoresearch.ideas.md
+experiments/
+.autoresearch/
+.autoresearch-off
+*.tmp
+*.bak
