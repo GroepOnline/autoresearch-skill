@@ -5,7 +5,8 @@
   "type": "module",
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "python3 -m unittest discover -s tests -p 'test_*.py'"
+    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
+    "validate": "npm test && npm run typecheck"
   },
   "devDependencies": {
     "@types/node": "^22.10.0",

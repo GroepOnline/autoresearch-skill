@@ -59,11 +59,20 @@ Commands:
 /autoresearch dashboard
 ```
 
+## Helper scripts
+
+```bash
+python3 scripts/autoresearch.py parse-metrics benchmark.out
+python3 scripts/autoresearch.py validate autoresearch.jsonl
+python3 scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
+python3 scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
+```
+
 ## Validation
 
 ```bash
-python3 -m unittest discover -s tests -p 'test_*.py'
 npm install
+npm test
 npm run typecheck
 ```
 
