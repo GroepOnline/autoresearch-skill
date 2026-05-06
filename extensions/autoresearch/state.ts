@@ -176,7 +176,7 @@ export function delta(current: number, baseline: number): string {
   return d >= 0 ? `(+${d.toFixed(1)}%)` : `(${d.toFixed(1)}%)`;
 }
 
-export function buildContextInjection(cwd: string, state: ArState): string | null {
+export function buildContextInjection(cwd: string, state: ArState, lastRunDurationMs?: number): string | null {
   const p = paths(cwd);
   if (!fs.existsSync(p.context) || fs.existsSync(p.sentinel)) return null;
   if (state.parseErrors.length > 0) {
@@ -209,6 +209,9 @@ export function buildContextInjection(cwd: string, state: ArState): string | nul
   }
   const dir = direction(config);
   md += `| Doel | ${dir === "lower" ? "↓ lager" : "↑ hoger"} is beter |\n`;
+  if (lastRunDurationMs !== undefined && lastRunDurationMs > 0) {
+    md += `| Laatste run | ${(lastRunDurationMs / 1000).toFixed(1)}s |\n`;
+  }
 
   // ── Recently tried (auto-generated from JSONL, no manual worklog needed) ─
   const recent = state.results.slice(-10).reverse();

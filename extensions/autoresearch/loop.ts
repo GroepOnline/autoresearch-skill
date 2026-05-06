@@ -13,6 +13,9 @@ export interface LoopState {
   consecutiveDiscards: number;
   maxRunsWithoutImprovement: number;
   runsSinceLastImprovement: number;
+  lastRunTs?: number;
+  lastRunDurationMs?: number;
+  trackedRuns: number;
 }
 
 export interface LoopContinuation {

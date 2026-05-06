@@ -4,6 +4,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage, summarizeLoopStop } from "./loop.js";
+import { setMaxDiffLines } from "./policy.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
 
@@ -172,9 +173,11 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             consecutiveDiscards: 0,
             maxRunsWithoutImprovement: 10,
             runsSinceLastImprovement: 0,
+            trackedRuns: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
+          setMaxDiffLines(50);
           ctx.ui.notify(`🚀 Autoresearch gestart (assisted) — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min.`, "info");
           pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, elapsedMinutes: 0, remainingMinutes: budgets.maxMinutes, shouldContinue: true }, state), { deliverAs: "followUp" });
           return;
@@ -197,9 +200,11 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             consecutiveDiscards: 0,
             maxRunsWithoutImprovement: 10,
             runsSinceLastImprovement: 0,
+            trackedRuns: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
+          setMaxDiffLines(10);
           ctx.ui.notify(`🐣 Ralph Wiggum mode — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min. Simpelste hypotheses eerst.`, "info");
           pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, remainingMinutes: budgets.maxMinutes, elapsedMinutes: 0, shouldContinue: true }, state), { deliverAs: "followUp" });
           return;

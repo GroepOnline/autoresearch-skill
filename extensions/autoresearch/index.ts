@@ -11,10 +11,11 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
+import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
 import type { LoopState } from "./loop.js";
-import { buildContinuationMessage, evaluateContinuation, summarizeLoopStop } from "./loop.js";
-import { evaluateToolCall, hasAutoresearchSession } from "./policy.js";
+import { buildContinuationMessage, evaluateContinuation, summarizeLoopStop, type LoopContinuation } from "./loop.js";
+import { evaluateToolCall, hasAutoresearchSession, setMaxDiffLines } from "./policy.js";
 import { buildContextInjection, delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { footerText } from "./ui.js";
 import { registerAutoresearchTools } from "./tools.js";
@@ -48,6 +49,9 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         since++;
       }
       activeLoop.runsSinceLastImprovement = since;
+
+      // Restore tracked runs count
+      activeLoop.trackedRuns = state.runCount - activeLoop.runsAtStart;
     }
 
     const state = readState(ctx.cwd);
@@ -63,7 +67,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   // ─── before_agent_start ──────────────────────────────────────────────────────
   pi.on("before_agent_start", async (_event, ctx) => {
     const state = readState(ctx.cwd);
-    const injection = buildContextInjection(ctx.cwd, state);
+    const injection = buildContextInjection(ctx.cwd, state, activeLoop?.lastRunDurationMs);
     if (!injection) return;
 
     ctx.ui.setStatus("autoresearch", footerText(state));
@@ -89,6 +93,19 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     const state = readState(ctx.cwd);
     ctx.ui.setStatus("autoresearch", footerText(state));
 
+    // ── Track run duration ──────────────────────────────────────────────────
+    if (activeLoop) {
+      const newRunCount = state.runCount - activeLoop.runsAtStart;
+      if (newRunCount > activeLoop.trackedRuns) {
+        const now = Date.now();
+        if (activeLoop.lastRunTs !== undefined) {
+          activeLoop.lastRunDurationMs = now - activeLoop.lastRunTs;
+        }
+        activeLoop.lastRunTs = now;
+        activeLoop.trackedRuns = newRunCount;
+      }
+    }
+
     if (!activeLoop || activeLoop.mode === "assisted") return;
 
     // Track consecutive discards + plateau
@@ -107,6 +124,8 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     if (!cont.shouldContinue) {
       const summary = summarizeLoopStop(activeLoop, cont, state);
       pi.sendMessage({ customType: "autoresearch-stop", content: summary, display: true }, { triggerTurn: false });
+      // ── Write stop summary to disk ──────────────────────────────────────
+      writeStopSummary(ctx.cwd, activeLoop, cont, state);
       activeLoop = null;
       pi.appendEntry("autoresearch-loop", null);
       return;
@@ -155,4 +174,52 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   // ─── Register commands and tools ─────────────────────────────────────────────
   registerAutoresearchCommand(pi, storeLoop);
   registerAutoresearchTools(pi);
+}
+
+// ─── Helpers ───────────────────────────────────────────────────────────────────
+
+function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, state: import("./types.js").ArState): void {
+  const config = state.config;
+  if (!config) return;
+
+  const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
+  const filePath = path.join(cwd, "experiments", `summary-${ts}.md`);
+
+  const lines = [
+    `# Autoresearch Stop Summary`,
+    `**Session:** ${config.name}`,
+    `**Stopped:** ${new Date().toISOString()}`,
+    `**Reason:** ${cont.stopReason ?? "onbekend"}`,
+    "",
+    "## Stats",
+    `| Metric | Value |`,
+    `|--------|-------|`,
+    `| Mode | ${loop.mode} |`,
+    `| Runs | ${cont.runsUsed}/${loop.maxRuns} |`,
+    `| Time | ${cont.elapsedMinutes.toFixed(1)} min / ${loop.maxMinutes} min |`,
+    `| Keep | ${state.keptCount} |`,
+    `| Discard | ${state.discardedCount} |`,
+    `| Crash | ${state.crashedCount} |`,
+  ];
+
+  if (state.baselineMetric !== null) lines.push(`| Baseline | ${fmt(state.baselineMetric, metricUnit(config))} |`);
+  if (state.bestMetric !== null && state.bestRun !== null) {
+    lines.push(`| Best | ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)} |`);
+  }
+
+  lines.push("", "## Recent Results", "");
+  const recent = state.results.slice(-10).reverse();
+  for (const r of recent) {
+    const action = state.decisions.find(d => d.run === r.run)?.action ?? r.status;
+    const d = state.baselineMetric !== null ? delta(r.value, state.baselineMetric) : "";
+    lines.push(`- **#${r.run}** ${action}: ${fmt(r.value, metricUnit(config))} ${d} — ${r.description}`);
+  }
+
+  lines.push("", `*Gegenereerd door autoresearch plugin*`);
+
+  try {
+    const dir = path.join(cwd, "experiments");
+    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.writeFileSync(filePath, lines.join("\n") + "\n");
+  } catch { /* best-effort */ }
 }

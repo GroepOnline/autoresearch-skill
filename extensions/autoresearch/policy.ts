@@ -12,6 +12,13 @@ export interface PolicyDecision {
   reason?: string;
 }
 
+// ── Module-level diff-size limit ───────────────────────────────────────────
+let currentMaxDiffLines = 50;
+
+export function setMaxDiffLines(n: number): void {
+  currentMaxDiffLines = n;
+}
+
 const DEFAULT_PROTECTED_PATTERNS = [
   /^\.git(?:\/|$)/,
   /^node_modules(?:\/|$)/,
@@ -126,6 +133,47 @@ export function evaluateBashCommand(command: string): PolicyDecision {
   return { block: false };
 }
 
+function evaluateDiffSize(toolName: string, input: Record<string, unknown>): PolicyDecision {
+  if (currentMaxDiffLines <= 0) return { block: false }; // 0 or negative = no limit
+  if (!["write", "edit", "str_replace"].includes(toolName)) return { block: false };
+
+  let totalChangedLines = 0;
+
+  if (toolName === "write") {
+    const content = input.content;
+    if (typeof content === "string") {
+      totalChangedLines = content.split("\n").length;
+    }
+  } else {
+    // edit / str_replace: check for replacements array or single old/new
+    const replacements = input.replacements;
+    if (Array.isArray(replacements)) {
+      for (const r of replacements) {
+        if (typeof r === "object" && r) {
+          const oldLines = typeof (r as Record<string, unknown>).old === "string" ? (r as Record<string, unknown>).old!.toString().split("\n").length : 0;
+          const newLines = typeof (r as Record<string, unknown>).new === "string" ? (r as Record<string, unknown>).new!.toString().split("\n").length : 0;
+          totalChangedLines += Math.max(oldLines, newLines);
+        }
+      }
+    } else {
+      const oldStr = typeof input.old === "string" ? input.old : typeof input.old_str === "string" ? input.old_str : "";
+      const newStr = typeof input.new === "string" ? input.new : typeof input.new_str === "string" ? input.new_str : "";
+      if (oldStr || newStr) {
+        totalChangedLines = Math.max(oldStr.split("\n").length, newStr.split("\n").length);
+      }
+    }
+  }
+
+  if (totalChangedLines > currentMaxDiffLines) {
+    return {
+      block: true,
+      reason: `Autoresearch policy: diff too large (${totalChangedLines} lines, max ${currentMaxDiffLines}). Wijs kleine, incrementele wijzigingen toe.`,
+    };
+  }
+
+  return { block: false };
+}
+
 export function evaluateToolCall(toolName: string, input: Record<string, unknown>, cwd: string, contract = readContract(cwd)): PolicyDecision {
   if (toolName === "bash") {
     const command = input.command;
@@ -133,8 +181,11 @@ export function evaluateToolCall(toolName: string, input: Record<string, unknown
     return evaluateBashCommand(command);
   }
 
-  if (toolName === "write" || toolName === "edit") {
-    return evaluatePathMutation(cwd, input.path, contract);
+  if (toolName === "write" || toolName === "edit" || toolName === "str_replace") {
+    const pathDecision = evaluatePathMutation(cwd, input.path, contract);
+    if (pathDecision.block) return pathDecision;
+    const sizeDecision = evaluateDiffSize(toolName, input);
+    if (sizeDecision.block) return sizeDecision;
   }
 
   return { block: false };

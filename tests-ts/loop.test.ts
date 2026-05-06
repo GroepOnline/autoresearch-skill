@@ -35,6 +35,7 @@ function baseLoop(overrides: Partial<LoopState> = {}): LoopState {
     consecutiveDiscards: 0,
     maxRunsWithoutImprovement: 10,
     runsSinceLastImprovement: 0,
+    trackedRuns: 0,
     ...overrides,
   };
 }
