@@ -1,0 +1,6 @@
+
+# Local environment and agent artifacts
+.env.local
+.env.*.local
+.artifacts/
+.state/
