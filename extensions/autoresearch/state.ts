@@ -45,6 +45,8 @@ function normalizeResult(result: ArResult, config: ArConfig | null): NormalizedR
     description: result.description ?? "",
     timestamp: result.timestamp,
     segment: result.segment,
+    commit: result.commit,
+    metrics: result.metrics,
   };
 }
 
@@ -212,13 +214,22 @@ export function buildContextInjection(cwd: string, state: ArState): string | nul
   const recent = state.results.slice(-10).reverse();
   if (recent.length > 0) {
     md += `\n### Recently Tried (auto-generated)\n`;
-    md += `| Run | Result | Status | Description |\n`;
-    md += `|-----|--------|--------|-------------|\n`;
+    md += `| Run | Result | Status | Commit | Description |\n`;
+    md += `|-----|--------|--------|--------|-------------|\n`;
     for (const r of recent) {
       const action = state.decisions.find(d => d.run === r.run)?.action ?? r.status;
       const icon = action === "keep" || action === "baseline" ? "✅" : action === "discard" ? "❌" : r.status === "crash" ? "💥" : "·";
       const d = state.baselineMetric !== null ? delta(r.value, state.baselineMetric) : "";
-      md += `| ${r.run} | ${fmt(r.value, metricUnit(config))} ${d} | ${icon} ${action} | ${r.description.slice(0, 60)} |\n`;
+      const commitShort = r.commit ? r.commit.slice(0, 7) : "-";
+      md += `| ${r.run} | ${fmt(r.value, metricUnit(config))} ${d} | ${icon} ${action} | \`${commitShort}\` | ${r.description.slice(0, 60)} |\n`;
+      // Show secondary metrics if present
+      if (r.metrics && Object.keys(r.metrics).length > 0) {
+        const secondary = Object.entries(r.metrics)
+          .filter(([k]) => k !== metricName(config))
+          .map(([k, v]) => `${k}=${fmt(v, metricUnit(config))}`)
+          .join(", ");
+        if (secondary) md += `| | | | | ↳ ${secondary} |\n`;
+      }
     }
     md += `\n⚠️ **Baseer je volgende hypothese op wat al geprobeerd is — geen herhaling!**\n`;
   }

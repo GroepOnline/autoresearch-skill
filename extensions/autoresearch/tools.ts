@@ -1,4 +1,5 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { execSync } from "node:child_process";
 import { delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { dashboardRows } from "./ui.js";
 
@@ -25,6 +26,26 @@ function median(values: number[]): number {
   const sorted = [...values].sort((a, b) => a - b);
   const mid = Math.floor(sorted.length / 2);
   return sorted.length % 2 === 0 ? (sorted[mid - 1] + sorted[mid]) / 2 : sorted[mid];
+}
+
+function stdev(values: number[]): number {
+  if (values.length < 2) return 0;
+  const m = values.reduce((a, b) => a + b, 0) / values.length;
+  return Math.sqrt(values.reduce((a, b) => a + (b - m) ** 2, 0) / (values.length - 1));
+}
+
+function cv(values: number[]): number {
+  if (values.length < 2) return 0;
+  const m = Math.abs(values.reduce((a, b) => a + b, 0) / values.length);
+  return m === 0 ? 0 : (stdev(values) / m) * 100;
+}
+
+function captureCommit(cwd: string): string | null {
+  try {
+    return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim() || null;
+  } catch {
+    return null;
+  }
 }
 
 export function registerAutoresearchTools(pi: ExtensionAPI): void {
@@ -114,14 +135,32 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
 
       const primaryMedian = median(primaryValues);
       const primaryDirection = metrics.find(m => m.name === primaryName)?.attrs?.direction ?? "lower";
+      const primaryCV = cv(primaryValues);
+      const commit = captureCommit(ctx.cwd);
 
       const allNames = [...new Set(metrics.map(m => m.name))];
       const summaryLines: string[] = [
         `Primary: ${primaryName}=${primaryMedian} (direction=${primaryDirection}, samples=${primaryValues.length})`,
       ];
+
+      // ── Noise-adaptive sampling ──────────────────────────────────────────
+      const state = readState(ctx.cwd);
+      const noiseThreshold = state.config?.noise_floor_pct ?? 5; // CV > threshold% triggers noise warning
+      if (primaryValues.length >= 3 && primaryCV > noiseThreshold) {
+        summaryLines.push(`⚠️ High noise: CV ${primaryCV.toFixed(1)}% (threshold ${noiseThreshold}%). Consider running more samples.`);
+      }
+
       for (const name of allNames.filter(n => n !== primaryName)) {
         const vals = metrics.filter(m => m.name === name).map(m => m.value);
         summaryLines.push(`  ${name}=${median(vals)} (samples=${vals.length})`);
+      }
+
+      if (commit) summaryLines.push(`Commit: ${commit.slice(0, 7)}`);
+
+      // ── Build secondary metrics map ───────────────────────────────────────
+      const secondaryMetrics: Record<string, number> = {};
+      for (const name of allNames.filter(n => n !== primaryName)) {
+        secondaryMetrics[name] = median(metrics.filter(m => m.name === name).map(m => m.value));
       }
 
       return {
@@ -131,7 +170,12 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           primaryMedian,
           primaryDirection,
           primarySamples: primaryValues,
+          primaryCV,
+          noisy: primaryCV > noiseThreshold,
+          noiseThreshold,
           allMetrics: Object.fromEntries(allNames.map(n => [n, metrics.filter(m => m.name === n).map(m => m.value)])),
+          secondaryMetrics: Object.keys(secondaryMetrics).length > 0 ? secondaryMetrics : undefined,
+          commit,
         },
       };
     },

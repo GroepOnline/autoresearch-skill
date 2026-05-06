@@ -48,6 +48,8 @@ export interface NormalizedResult {
   description: string;
   timestamp?: string | number;
   segment?: number;
+  commit?: string;
+  metrics?: Record<string, number>;
 }
 
 export interface ArState {
