@@ -6,11 +6,13 @@ Autoresearch helps an agent test one hypothesis at a time, compare measured resu
 
 ## What this repository contains
 
-- `SKILL.md` - ChatGPT/Pi skill entrypoint.
+- `skills/autoresearch/SKILL.md` - canonical Pi skill entrypoint.
+- `SKILL.md` - compatibility copy of the skill entrypoint.
+- `extensions/autoresearch/index.ts` - canonical Pi TUI plugin for `/autoresearch` commands.
+- `extension.ts` - compatibility shim for older symlink installs.
 - `agents/openai.yaml` - ChatGPT skill UI metadata.
 - `references/` - detailed protocols for state, benchmark decisions, safety, Pi extension behavior, and examples.
 - `scripts/` - deterministic helpers for metric parsing, JSONL validation, decisions, and dashboard generation.
-- `extension.ts` - optional Pi TUI integration for `/autoresearch` commands.
 - `tests/` - script-level regression tests.
 
 ## Core guarantees
@@ -36,13 +38,28 @@ These runtime files are ignored in this repository by default.
 
 ## Pi usage
 
+Install as a Pi package:
+
 ```bash
-# Add this repository as a skill in the agent config.
+pi install git:https://github.com/GroepChef/autoresearch-skill
+```
+
+For local development:
+
+```bash
+pi install /path/to/autoresearch-skill
+# or for one-off testing
+pi -e /path/to/autoresearch-skill/extensions/autoresearch/index.ts
+```
+
+Compatibility skill-only setup remains possible:
+
+```yaml
 skills:
   - path: GroepChef/autoresearch-skill
 ```
 
-Optional Pi extension:
+Compatibility symlink for older extension installs:
 
 ```bash
 ln -s /path/to/autoresearch-skill/extension.ts ~/.pi/agent/extensions/autoresearch.ts

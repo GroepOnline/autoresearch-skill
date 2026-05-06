@@ -1,8 +1,22 @@
 {
-  "name": "autoresearch-skill",
+  "name": "pi-autoresearch",
   "version": "0.1.0",
   "private": true,
   "type": "module",
+  "keywords": [
+    "pi-package",
+    "pi-extension",
+    "autoresearch",
+    "benchmark"
+  ],
+  "pi": {
+    "extensions": [
+      "./extensions/autoresearch/index.ts"
+    ],
+    "skills": [
+      "./skills/autoresearch"
+    ]
+  },
   "scripts": {
     "typecheck": "tsc --noEmit",
     "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
@@ -11,5 +25,13 @@
   "devDependencies": {
     "@types/node": "^22.10.0",
     "typescript": "^5.7.0"
+  },
+  "peerDependencies": {
+    "@mariozechner/pi-coding-agent": "*"
+  },
+  "peerDependenciesMeta": {
+    "@mariozechner/pi-coding-agent": {
+      "optional": true
+    }
   }
 }

@@ -9,5 +9,5 @@
     "types": ["node"],
     "typeRoots": ["./types", "./node_modules/@types"]
   },
-  "include": ["extension.ts", "types/**/*.d.ts"]
+  "include": ["extension.ts", "extensions/**/*.ts", "types/**/*.d.ts"]
 }
