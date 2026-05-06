@@ -1,0 +1,35 @@
+name: Environment Check
+
+on:
+  pull_request:
+  workflow_dispatch:
+  schedule:
+    - cron: '23 7 * * 1'
+
+permissions:
+  contents: read
+
+jobs:
+  validate-environment:
+    runs-on: ubuntu-latest
+    steps:
+      - name: Checkout
+        uses: actions/checkout@34e114876b0b11c390a56381ad16ebd13914f8d5
+      - name: Check repository files
+        run: |
+          test -f .env.example
+          test -f docs/environment.md
+          test -f docs/automation.md
+          test -f scripts/bootstrap-env.sh
+          bash -n scripts/bootstrap-env.sh
+      - name: Check placeholder secrets only
+        run: |
+          if grep -Eq '(sk-[A-Za-z0-9]|ghp_[A-Za-z0-9]|AKIA[0-9A-Z]{16})' .env.example; then
+            echo 'Potential real secret detected in .env.example' >&2
+            exit 1
+          fi
+      - name: Report safety defaults
+        run: |
+          grep -q '^DRY_RUN=true$' .env.example
+          grep -q '^REQUIRE_HUMAN_APPROVAL_FOR_DESTRUCTIVE_ACTIONS=true$' .env.example
+          grep -q '^COMPUTER_USE_ENABLED=false$' .env.example
