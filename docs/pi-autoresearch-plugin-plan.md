@@ -18,10 +18,10 @@ Convert this repository from a skill plus optional single-file extension into a 
 
 ## Phases
 
-1. Package manifest and compatibility layout.
-2. Modularize extension internals without behavior changes.
-3. Add TypeScript helper tests.
-4. Add safety policy module and `tool_call` guards.
+1. Package manifest and compatibility layout. ✅ started
+2. Modularize extension internals without behavior changes. ✅ started
+3. Add TypeScript helper tests. ✅ started
+4. Add safety policy module and `tool_call` guards. ✅ started
 5. Add custom autoresearch tools.
 6. Add loop orchestration state machine.
 7. Add Ralph Wiggum mode.
