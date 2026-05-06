@@ -186,16 +186,47 @@ export function buildContextInjection(cwd: string, state: ArState): string | nul
 
   let md = fs.readFileSync(p.context, "utf-8");
 
-  if (state.config && state.runCount > 0) {
-    const config = state.config;
-    const last = state.results.at(-1);
-    md += `\n\n---\n## Autoresearch Loop — Live State\n`;
-    md += `- Run: **${state.runCount}** | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}\n`;
-    if (state.baselineMetric !== null) md += `- Baseline ${metricName(config)}: ${fmt(state.baselineMetric, metricUnit(config))}\n`;
-    if (state.bestMetric !== null && state.bestRun !== null) md += `- Best ${metricName(config)}: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}\n`;
-    if (last) md += `- Last run #${last.run}: ${last.status} — ${last.description}\n`;
-    md += `\nContinue one bounded hypothesis at a time. Stop at budget, unsafe git state, corrupt state, noisy metrics, or failing correctness checks.\n`;
+  if (!state.config || state.runCount === 0) return md;
+
+  const config = state.config;
+
+  // ── Explicit loop header ─────────────────────────────────────────────────
+  md += `\n\n---\n## 🔬 Autoresearch Loop — Run ${state.runCount + 1}\n`;
+  md += `**Je bent in een bounded autoresearch loop.** Test één hypothese per run,\n`;
+  md += `vergelijk met de huidige best, en gebruik autoresearch_decide voor keep/discard.\n\n`;
+
+  // ── Live stats ────────────────────────────────────────────────────────────
+  md += `### Status\n`;
+  md += `| Metric | Waarde |\n`;
+  md += `|--------|--------|\n`;
+  md += `| Runs | ${state.runCount} (✅ ${state.keptCount} keep / ❌ ${state.discardedCount} discard / 💥 ${state.crashedCount} crash) |\n`;
+  if (state.baselineMetric !== null) md += `| Baseline ${metricName(config)} | ${fmt(state.baselineMetric, metricUnit(config))} |\n`;
+  if (state.bestMetric !== null && state.bestRun !== null) {
+    md += `| Best ${metricName(config)} | ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)} |\n`;
   }
+  const dir = direction(config);
+  md += `| Doel | ${dir === "lower" ? "↓ lager" : "↑ hoger"} is beter |\n`;
+
+  // ── Recently tried (auto-generated from JSONL, no manual worklog needed) ─
+  const recent = state.results.slice(-10).reverse();
+  if (recent.length > 0) {
+    md += `\n### Recently Tried (auto-generated)\n`;
+    md += `| Run | Result | Status | Description |\n`;
+    md += `|-----|--------|--------|-------------|\n`;
+    for (const r of recent) {
+      const action = state.decisions.find(d => d.run === r.run)?.action ?? r.status;
+      const icon = action === "keep" || action === "baseline" ? "✅" : action === "discard" ? "❌" : r.status === "crash" ? "💥" : "·";
+      const d = state.baselineMetric !== null ? delta(r.value, state.baselineMetric) : "";
+      md += `| ${r.run} | ${fmt(r.value, metricUnit(config))} ${d} | ${icon} ${action} | ${r.description.slice(0, 60)} |\n`;
+    }
+    md += `\n⚠️ **Baseer je volgende hypothese op wat al geprobeerd is — geen herhaling!**\n`;
+  }
+
+  md += `\n### Regels\n`;
+  md += `- ÉÉN hypothese per run\n`;
+  md += `- Run \`./autoresearch.sh\` als benchmark\n`;
+  md += `- Gebruik \`autoresearch_decide\` voor keep/discard/stop\n`;
+  md += `- Stop bij: budget op, safety issues, corrupte state, noise, of test failures\n`;
 
   return md;
 }

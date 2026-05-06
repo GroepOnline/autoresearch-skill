@@ -54,14 +54,14 @@ Regels:
 - De diff mag maximaal ~10 gewijzigde regels zijn, tenzij de scope dit uitdrukkelijk toestaat.
 - Geen nieuwe dependencies, geen config-wijzigingen, geen lockfile-wijzigingen.
 - Run ./autoresearch.sh, verifieer dat tests slagen, vergelijk mediaan met huidige best.
-- Als de verbetering < min_effect_size_pct: meteen discard, noteer in worklog, ga door.
+- Als de verbetering < min_effect_size_pct: meteen discard, ga door.
 - Doe geen tweede hypothese in dezelfde run.`;
 
 const AUTONOMOUS_BASE_PROMPT = `Start één bounded autoresearch run.
-Lees autoresearch.md, autoresearch.jsonl en experiments/worklog.md voor context.
+Lees autoresearch.md en autoresearch.jsonl voor context.
 Run ./autoresearch.sh als benchmark en parse METRIC-regels.
 Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide tool voor keep/discard/stop.
-Leg de beslissing vast in autoresearch.jsonl en update worklog.
+Leg de beslissing vast in autoresearch.jsonl.
 Stop als budget, safety, corrupt state, noisymetrics, of correctness failures van toepassing zijn.`;
 
 export function buildContinuationMessage(loop: LoopState, cont: LoopContinuation, state: ArState): string {
@@ -74,6 +74,13 @@ export function buildContinuationMessage(loop: LoopState, cont: LoopContinuation
 
   if (config && state.bestMetric !== null && state.baselineMetric !== null) {
     context += ` | Best: ${fmt(state.bestMetric, metricUnit(config))} ${delta(state.bestMetric, state.baselineMetric)} t.o.v. baseline.`;
+  }
+
+  // ── Recently tried deduplication hint ───────────────────────────────────
+  const recentDescriptions = [...new Set(state.results.slice(-5).map(r => r.description).filter(Boolean))];
+  if (recentDescriptions.length > 0) {
+    context += `\n\nLaatste pogingen (herhaal deze NIET):\n`;
+    context += recentDescriptions.map(d => `- ${d}`).join("\n");
   }
 
   return `${header}${context}`;
