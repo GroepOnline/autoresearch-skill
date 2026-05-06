@@ -12,6 +12,7 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import * as fs from "node:fs";
 import { registerAutoresearchCommand } from "./commands.js";
+import { evaluateToolCall, hasAutoresearchSession } from "./policy.js";
 import { buildContextInjection, delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { footerText } from "./ui.js";
 
@@ -46,6 +47,12 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   pi.on("agent_end", async (_event, ctx) => {
     const state = readState(ctx.cwd);
     ctx.ui.setStatus("autoresearch", footerText(state));
+  });
+
+  pi.on("tool_call", async (event, ctx) => {
+    if (!hasAutoresearchSession(ctx.cwd)) return;
+    const decision = evaluateToolCall(event.toolName, event.input, ctx.cwd);
+    if (decision.block) return { block: true, reason: decision.reason };
   });
 
   pi.on("session_before_compact", async (event, ctx) => {
