@@ -17,3 +17,12 @@ experiments/
 .autoresearch-off
 *.tmp
 *.bak
+
+# Local environment and agent artifacts
+.env
+.env.*
+!.env.example
+.env.local
+.env.*.local
+.artifacts/
+.state/
