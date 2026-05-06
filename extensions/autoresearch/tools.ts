@@ -179,17 +179,35 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       if (!Number.isFinite(best)) throw new Error("best must be a finite number when provided");
 
       const threshold = Math.max(min_effect_size_pct, noise_floor_pct);
-      const improvement = best === 0
-        ? (direction === "lower" ? (candidate < best ? Infinity : -Infinity) : (candidate > best ? Infinity : -Infinity))
-        : (direction === "lower" ? ((best - candidate) / Math.abs(best)) * 100 : ((candidate - best) / Math.abs(best)) * 100);
 
-      if (improvement >= threshold) {
-        const text = `KEEP — improved ${improvement.toFixed(2)}% over current best (threshold ${threshold.toFixed(2)}%)`;
-        return { content: [{ type: "text", text }], details: { action: "keep", reason: text, improvement_pct: improvement } };
+      // Follow benchmark-policy.md: keep if candidate beats the relative threshold
+      let improved: boolean;
+      let improvementPct: number;
+
+      if (best === 0) {
+        // Can't compute relative improvement against zero — use absolute direction check
+        improved = direction === "lower" ? candidate < 0 : candidate > 0;
+        improvementPct = improved ? Infinity : -Infinity;
+      } else {
+        const factor = 1 - threshold / 100;
+        const thresholdValue = direction === "lower"
+          ? best * factor
+          : best * (1 + threshold / 100);
+        improved = direction === "lower" ? candidate < thresholdValue : candidate > thresholdValue;
+        improvementPct = direction === "lower"
+          ? ((best - candidate) / Math.abs(best)) * 100
+          : ((candidate - best) / Math.abs(best)) * 100;
       }
 
-      const text = `DISCARD — improvement ${improvement.toFixed(2)}% is below threshold ${threshold.toFixed(2)}% or worse than best`;
-      return { content: [{ type: "text", text }], details: { action: "discard", reason: text, improvement_pct: improvement } };
+      if (improved) {
+        const pctStr = Number.isFinite(improvementPct) ? improvementPct.toFixed(2) : "∞";
+        const text = `KEEP — improved ${pctStr}% over current best (threshold ${threshold.toFixed(2)}%)`;
+        return { content: [{ type: "text", text }], details: { action: "keep", reason: text, improvement_pct: improvementPct } };
+      }
+
+      const pctStr = Number.isFinite(improvementPct) ? improvementPct.toFixed(2) : "-∞";
+      const text = `DISCARD — improvement ${pctStr}% is below threshold ${threshold.toFixed(2)}% or worse than best`;
+      return { content: [{ type: "text", text }], details: { action: "discard", reason: text, improvement_pct: improvementPct } };
     },
   });
 

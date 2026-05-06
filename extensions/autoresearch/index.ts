@@ -32,6 +32,17 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     const lastLoopEntry = entries.filter(e => e.type === "custom" && e.customType === "autoresearch-loop").pop();
     if (lastLoopEntry?.data) activeLoop = lastLoopEntry.data as LoopState;
 
+    // Re-derive consecutive discards from JSONL (survives session restarts)
+    if (activeLoop) {
+      const state = readState(ctx.cwd);
+      let cons = 0;
+      for (let i = state.decisions.length - 1; i >= 0; i--) {
+        if (state.decisions[i].action === "discard") cons++;
+        else break;
+      }
+      activeLoop.consecutiveDiscards = cons;
+    }
+
     const state = readState(ctx.cwd);
     ctx.ui.setStatus("autoresearch", footerText(state));
 
@@ -72,6 +83,16 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     ctx.ui.setStatus("autoresearch", footerText(state));
 
     if (!activeLoop || activeLoop.mode === "assisted") return;
+
+    // Track consecutive discards
+    const lastDecision = state.decisions.at(-1);
+    if (lastDecision) {
+      if (lastDecision.action === "keep" || lastDecision.action === "baseline") {
+        activeLoop.consecutiveDiscards = 0;
+      } else if (lastDecision.action === "discard") {
+        activeLoop.consecutiveDiscards++;
+      }
+    }
 
     const cont = evaluateContinuation(state, activeLoop, Date.now());
     if (!cont.shouldContinue) {

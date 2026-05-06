@@ -9,6 +9,8 @@ export interface LoopState {
   maxMinutes: number;
   startedAt: number;
   runsAtStart: number;
+  maxConsecutiveDiscards: number;
+  consecutiveDiscards: number;
 }
 
 export interface LoopContinuation {
@@ -39,6 +41,7 @@ export function evaluateContinuation(state: ArState, loop: LoopState, nowMs: num
 
   const lastDecision = state.decisions.at(-1);
   if (lastDecision?.action === "stop") return { shouldContinue: false, stopReason: `stop decision: ${lastDecision.reason}`, ...base };
+  if (loop.consecutiveDiscards >= loop.maxConsecutiveDiscards) return { shouldContinue: false, stopReason: `${loop.consecutiveDiscards} consecutive discards (limit ${loop.maxConsecutiveDiscards})`, ...base };
 
   return { shouldContinue: true, ...base };
 }

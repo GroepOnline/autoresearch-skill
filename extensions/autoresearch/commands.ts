@@ -1,7 +1,8 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
+import { execSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { LoopMode, LoopState } from "./loop.js";
+import type { LoopState } from "./loop.js";
 import { buildContinuationMessage, summarizeLoopStop } from "./loop.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
@@ -167,6 +168,8 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             maxMinutes: budgets.maxMinutes,
             startedAt: Date.now(),
             runsAtStart: state.runCount,
+            maxConsecutiveDiscards: 5,
+            consecutiveDiscards: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
@@ -188,6 +191,8 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             maxMinutes: budgets.maxMinutes,
             startedAt: Date.now(),
             runsAtStart: state.runCount,
+            maxConsecutiveDiscards: 5,
+            consecutiveDiscards: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
@@ -213,5 +218,10 @@ function checkStartPrereqs(state: ReturnType<typeof readState>, p: ReturnType<ty
   if (!existsSync(p.context)) return "autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.";
   if (!existsSync(pathJoin(cwd, "autoresearch.sh"))) return "autoresearch.sh niet gevonden. Maak het aan voordat je start.";
   if (existsSync(p.sentinel)) return "Loop is gepauzeerd. /autoresearch resume om door te gaan.";
+  // Check git working tree is clean (skip if not a git repo)
+  try {
+    const status = execSync("git status --porcelain", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    if (status) return "Git working tree is dirty. Commit of stash wijzigingen voordat je /autoresearch start.";
+  } catch { /* not a git repo — skip check */ }
   return null;
 }

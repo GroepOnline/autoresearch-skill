@@ -31,6 +31,8 @@ function baseLoop(overrides: Partial<LoopState> = {}): LoopState {
     maxMinutes: 30,
     startedAt: Date.now() - 60_000, // 1 min elapsed
     runsAtStart: 0,
+    maxConsecutiveDiscards: 5,
+    consecutiveDiscards: 0,
     ...overrides,
   };
 }
@@ -84,4 +86,23 @@ test("ralph defaults: parseStartBudgets with implied args gives 3 runs / 20 min"
   const budgets = parseStartBudgets(["3", "20"]);
   assert.equal(budgets.maxRuns, 3);
   assert.equal(budgets.maxMinutes, 20);
+});
+
+test("loop stops after max consecutive discards", () => {
+  const cont = evaluateContinuation(
+    baseState({ runCount: 6 }),
+    baseLoop({ maxRuns: 10, consecutiveDiscards: 5, maxConsecutiveDiscards: 5 }),
+    Date.now()
+  );
+  assert.equal(cont.shouldContinue, false);
+  assert.match(cont.stopReason!, /consecutive discards/);
+});
+
+test("loop continues when discards below limit", () => {
+  const cont = evaluateContinuation(
+    baseState({ runCount: 4 }),
+    baseLoop({ maxRuns: 10, consecutiveDiscards: 4, maxConsecutiveDiscards: 5 }),
+    Date.now()
+  );
+  assert.equal(cont.shouldContinue, true);
 });
