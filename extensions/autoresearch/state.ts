@@ -10,6 +10,7 @@ export function paths(cwd: string) {
     dashboard: path.join(cwd, "autoresearch-dashboard.md"),
     worklog: path.join(cwd, "experiments", "worklog.md"),
     ideas: path.join(cwd, "autoresearch.ideas.md"),
+    snapshot: path.join(cwd, "AUTORESEARCH_STATE.json"),
   };
 }
 
@@ -221,6 +222,29 @@ export function buildContextInjection(cwd: string, state: ArState): string | nul
     }
     md += `\n⚠️ **Baseer je volgende hypothese op wat al geprobeerd is — geen herhaling!**\n`;
   }
+
+  // ── Snapshot: write AUTORESEARCH_STATE.json ────────────────────────────
+  const snapshot = {
+    session: config.name,
+    timestamp: new Date().toISOString(),
+    metric: metricName(config),
+    direction: direction(config),
+    baseline: state.baselineMetric,
+    best: state.bestMetric,
+    bestRun: state.bestRun,
+    runs: state.runCount,
+    kept: state.keptCount,
+    discarded: state.discardedCount,
+    crashed: state.crashedCount,
+    lastDecisions: state.decisions.slice(-5).map(d => ({
+      run: d.run,
+      action: d.action,
+      reason: d.reason,
+    })),
+  };
+  try {
+    fs.writeFileSync(p.snapshot, JSON.stringify(snapshot, null, 2));
+  } catch { /* best-effort: don't block context injection on snapshot failure */ }
 
   md += `\n### Regels\n`;
   md += `- ÉÉN hypothese per run\n`;

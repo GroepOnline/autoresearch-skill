@@ -170,6 +170,8 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             runsAtStart: state.runCount,
             maxConsecutiveDiscards: 5,
             consecutiveDiscards: 0,
+            maxRunsWithoutImprovement: 10,
+            runsSinceLastImprovement: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
@@ -193,6 +195,8 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             runsAtStart: state.runCount,
             maxConsecutiveDiscards: 5,
             consecutiveDiscards: 0,
+            maxRunsWithoutImprovement: 10,
+            runsSinceLastImprovement: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);

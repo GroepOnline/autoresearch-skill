@@ -33,6 +33,8 @@ function baseLoop(overrides: Partial<LoopState> = {}): LoopState {
     runsAtStart: 0,
     maxConsecutiveDiscards: 5,
     consecutiveDiscards: 0,
+    maxRunsWithoutImprovement: 10,
+    runsSinceLastImprovement: 0,
     ...overrides,
   };
 }
@@ -102,6 +104,25 @@ test("loop continues when discards below limit", () => {
   const cont = evaluateContinuation(
     baseState({ runCount: 4 }),
     baseLoop({ maxRuns: 10, consecutiveDiscards: 4, maxConsecutiveDiscards: 5 }),
+    Date.now()
+  );
+  assert.equal(cont.shouldContinue, true);
+});
+
+test("loop stops on plateau — maxRunsWithoutImprovement reached", () => {
+  const cont = evaluateContinuation(
+    baseState({ runCount: 12 }),
+    baseLoop({ maxRuns: 20, runsSinceLastImprovement: 10, maxRunsWithoutImprovement: 10 }),
+    Date.now()
+  );
+  assert.equal(cont.shouldContinue, false);
+  assert.match(cont.stopReason!, /plateau/);
+});
+
+test("loop continues when plateau limit not yet reached", () => {
+  const cont = evaluateContinuation(
+    baseState({ runCount: 10 }),
+    baseLoop({ maxRuns: 20, runsSinceLastImprovement: 9, maxRunsWithoutImprovement: 10 }),
     Date.now()
   );
   assert.equal(cont.shouldContinue, true);
