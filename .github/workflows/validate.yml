@@ -4,17 +4,46 @@ on:
   push:
   pull_request:
 
+permissions:
+  contents: read
+
 jobs:
   validate:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
-      - uses: actions/setup-python@v5
-        with:
-          python-version: "3.12"
-      - uses: actions/setup-node@v4
-        with:
-          node-version: "22"
-      - run: python3 -m unittest discover -s tests -p 'test_*.py'
-      - run: npm install
-      - run: npm run typecheck
+      - name: Checkout repository without external actions
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          set -euo pipefail
+          git init repo
+          cd repo
+          git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
+          git fetch --depth=1 origin "${GITHUB_SHA}"
+          git checkout --detach FETCH_HEAD
+
+      - name: Show runtime versions
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          python3 --version
+          node --version
+          npm --version
+
+      - name: Run Python tests
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          npm test
+
+      - name: Install Node dependencies
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          npm install
+
+      - name: Run TypeScript typecheck
+        working-directory: repo
+        run: |
+          set -euo pipefail
+          npm run typecheck
