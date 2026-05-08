@@ -65,6 +65,13 @@ const DESTRUCTIVE_COMMAND_PATTERNS = [
   /(?:curl|wget)[^\n|;&]*\|\s*(?:sh|bash)\b/,
 ];
 
+const SHELL_PROTECTED_PATH_PATTERNS = [
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?\.env(?:\.|[\s"'<>;&|]|$)/,
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?[^\s"'<>;&|]*\.(?:pem|key|p12|pfx)(?=$|[\s"'<>;&|])/,
+];
+
 function normalizeRelativePath(cwd: string, rawPath: string): string {
   const withoutAt = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
   const absolute = path.isAbsolute(withoutAt) ? withoutAt : path.resolve(cwd, withoutAt);
@@ -73,10 +80,24 @@ function normalizeRelativePath(cwd: string, rawPath: string): string {
 
 function pathMatches(patterns: string[], relPath: string): boolean {
   return patterns.some(pattern => {
-    const normalized = pattern.replaceAll(path.sep, "/").replace(/^\.\//, "").trim();
-    if (!normalized || normalized.includes("<")) return false;
-    return relPath === normalized || relPath.startsWith(`${normalized.replace(/\/$/, "")}/`);
+    const raw = pattern.replaceAll(path.sep, "/").trim();
+    if (!raw || raw.includes("<")) return false;
+    if (raw === "." || raw === "./") return true;
+    const normalized = raw.replace(/^\.\//, "").replace(/\/$/, "");
+    return relPath === normalized || relPath.startsWith(`${normalized}/`);
   });
+}
+
+function escapeRegExp(value: string): string {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}
+
+function commandMentionsPath(command: string, relPath: string): boolean {
+  const normalizedCommand = command.replaceAll("\\", "/");
+  const normalizedPath = relPath.replaceAll(path.sep, "/").replace(/^\.\//, "").replace(/\/$/, "").trim();
+  if (!normalizedPath || normalizedPath === "." || normalizedPath.includes("<")) return false;
+  const pattern = new RegExp(`(?:^|[\\s"'=<>;&|])(?:\\./)?${escapeRegExp(normalizedPath)}(?=$|[\\s"'<>;&|])`);
+  return pattern.test(normalizedCommand);
 }
 
 export function isRuntimeArtifact(relPath: string): boolean {
@@ -163,11 +184,23 @@ function evaluatePathMutation(cwd: string, rawPath: unknown, contract: Autoresea
   return { block: false };
 }
 
-export function evaluateBashCommand(command: string): PolicyDecision {
+export function evaluateBashCommand(command: string, _cwd?: string, contract?: AutoresearchContract): PolicyDecision {
   const compact = command.replace(/\\\n/g, "\n");
   for (const pattern of DESTRUCTIVE_COMMAND_PATTERNS) {
     if (pattern.test(compact)) {
       return { block: true, reason: `Autoresearch policy: destructive command blocked: ${command}` };
+    }
+  }
+  for (const pattern of SHELL_PROTECTED_PATH_PATTERNS) {
+    if (pattern.test(compact.replaceAll("\\", "/"))) {
+      return { block: true, reason: `Autoresearch policy: protected path referenced by shell command: ${command}` };
+    }
+  }
+  if (contract) {
+    for (const relPath of contract.offLimits) {
+      if (commandMentionsPath(compact, relPath)) {
+        return { block: true, reason: `Autoresearch policy: off-limits path referenced by shell command: ${relPath}` };
+      }
     }
   }
   return { block: false };
@@ -218,7 +251,7 @@ export function evaluateToolCall(toolName: string, input: Record<string, unknown
   if (toolName === "bash") {
     const command = input.command;
     if (typeof command !== "string") return { block: true, reason: "Autoresearch policy: bash command is missing." };
-    return evaluateBashCommand(command);
+    return evaluateBashCommand(command, cwd, contract);
   }
 
   if (toolName === "write" || toolName === "edit" || toolName === "str_replace") {

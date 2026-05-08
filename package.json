@@ -19,9 +19,11 @@
   "files": [
     "extension.ts",
     "extensions/",
-    "skills/",
+    "agents/",
     "references/",
-    "scripts/",
+    "scripts/*.py",
+    "scripts/*.mjs",
+    "scripts/*.sh",
     "types/",
     "LICENSE",
     "CHANGELOG.md",
@@ -38,9 +40,9 @@
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
-    "test:ts": "bash scripts/run-ts-tests.sh",
-    "validate": "bash scripts/validate.sh",
+    "test": "node scripts/run-python-tests.mjs",
+    "test:ts": "node scripts/run-ts-tests.mjs",
+    "validate": "node scripts/validate.mjs",
     "package:clean": "bash scripts/package-clean.sh"
   },
   "devDependencies": {

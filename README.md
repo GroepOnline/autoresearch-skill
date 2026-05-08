@@ -123,10 +123,10 @@ The loop automatically stops on:
 ## Helper scripts
 
 ```bash
-python3 scripts/autoresearch.py parse-metrics benchmark.out
-python3 scripts/autoresearch.py validate autoresearch.jsonl
-python3 scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
-python3 scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
+python scripts/autoresearch.py parse-metrics benchmark.out
+python scripts/autoresearch.py validate autoresearch.jsonl
+python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
+python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```
 
 ## Validation

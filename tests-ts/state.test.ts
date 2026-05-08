@@ -1,5 +1,5 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
@@ -66,6 +66,32 @@ test("readState validates protocol parity with Python helper", () => {
   assert.ok(state.parseErrors.some(error => error.includes("config.created_at")));
   assert.ok(state.parseErrors.some(error => error.includes("duplicate result.run 1")));
   assert.ok(state.parseErrors.some(error => error.includes("no preceding result")));
+});
+
+test("readState cache invalidates when runtime artifacts change", () => {
+  const cwd = tempProject();
+
+  assert.equal(readState(cwd).config, null);
+
+  writeFileSync(paths(cwd).jsonl, [
+    JSON.stringify({
+      type: "config",
+      schema_version: 1,
+      name: "cached-session",
+      metric: "score",
+      direction: "higher",
+      created_at: "2026-05-06T12:00:00Z",
+    }),
+  ].join("\n") + "\n");
+
+  assert.equal(readState(cwd).config?.name, "cached-session");
+  assert.equal(readState(cwd).isPaused, false);
+
+  writeFileSync(paths(cwd).sentinel, "paused\n");
+  assert.equal(readState(cwd).isPaused, true);
+
+  unlinkSync(paths(cwd).sentinel);
+  assert.equal(readState(cwd).isPaused, false);
 });
 
 test("parseStartBudgets defaults invalid values and accepts explicit values", () => {

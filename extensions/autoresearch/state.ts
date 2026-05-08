@@ -2,6 +2,17 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { ArConfig, ArDecision, ArResult, ArState, NormalizedResult, StartBudgets } from "./types.js";
 
+// Cache parsed state while invalidating on source artifact changes.
+const stateCache = new Map<string, { state: ArState; signature: string }>();
+
+export function clearStateCache(cwd?: string): void {
+  if (cwd) {
+    stateCache.delete(cwd);
+  } else {
+    stateCache.clear();
+  }
+}
+
 export function paths(cwd: string) {
   return {
     jsonl: path.join(cwd, "autoresearch.jsonl"),
@@ -78,10 +89,37 @@ function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
 
+function artifactSignature(filePath: string): string {
+  try {
+    const stat = fs.statSync(filePath);
+    return `${filePath}:${stat.size}:${stat.mtimeMs}`;
+  } catch {
+    return `${filePath}:missing`;
+  }
+}
+
+function stateSignature(cwd: string): string {
+  const p = paths(cwd);
+  return [
+    artifactSignature(p.jsonl),
+    artifactSignature(p.sentinel),
+    artifactSignature(p.ideas),
+  ].join("|");
+}
+
 export function readState(cwd: string): ArState {
+  const signature = stateSignature(cwd);
+  const cached = stateCache.get(cwd);
+  if (cached && cached.signature === signature) {
+    return cached.state;
+  }
+
   const p = paths(cwd);
   const state = emptyState(cwd);
-  if (!fs.existsSync(p.jsonl)) return state;
+  if (!fs.existsSync(p.jsonl)) {
+    stateCache.set(cwd, { state, signature });
+    return state;
+  }
 
   const resultByRun = new Map<number, NormalizedResult>();
   const seenActions = new Map<number, ArDecision["action"]>();
@@ -220,6 +258,8 @@ export function readState(cwd: string): ArState {
   state.keptCount = [...seenActions.values()].filter(action => action === "keep" || action === "baseline").length;
   state.discardedCount = [...seenActions.values()].filter(action => action === "discard").length;
   state.crashedCount = state.results.filter(result => result.status === "crash").length;
+
+  stateCache.set(cwd, { state, signature });
 
   return state;
 }

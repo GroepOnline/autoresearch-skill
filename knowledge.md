@@ -4,9 +4,9 @@ This file gives Codebuff context about your project: goals, commands, convention
 
 ## Quickstart
 
-- **Setup**: `cp .env.example .env.local && bash scripts/bootstrap-env.sh`
-- **Dev**: `npm run build` to compile TypeScript
-- **Test**: `bash scripts/validate.sh` (runs Python + TypeScript tests + typecheck)
+- **Setup**: copy `.env.example` to `.env.local`; use `bash scripts/bootstrap-env.sh` on Unix shells when environment bootstrap is needed.
+- **Dev**: `npm run typecheck` to validate TypeScript.
+- **Test**: `npm run validate` runs Python tests, TypeScript tests, and typecheck on Windows and Unix.
 
 ## Architecture
 
@@ -43,7 +43,7 @@ This file gives Codebuff context about your project: goals, commands, convention
 
 ## Conventions
 
-- **Formatting**: Prettier + ESLint (see package.json)
+- **Formatting**: No formatter/linter is configured; keep edits consistent with existing TypeScript and Python style.
 - **Patterns**: Follow modular structure in extensions/autoresearch/
 - **Safety**: All autonomous behavior bounded by run/time budgets; stops on corrupt/unsafe state
 
