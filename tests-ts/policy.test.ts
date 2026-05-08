@@ -171,6 +171,21 @@ test("bash blocks dangerous patterns even with allowed commands", () => {
   assert.equal(evaluateBashCommand("python -c 'import os; os.system(\"rm -rf /\")'").block, true);
 });
 
+test("input size validation blocks oversized commands and paths", () => {
+  // Command too long (over 10KB)
+  const longCommand = "npm test " + "x".repeat(15000);
+  assert.equal(evaluateBashCommand(longCommand).block, true);
+  assert.match(evaluateBashCommand(longCommand).reason!, /command too long/);
+  
+  // Path too long (over 500 chars)
+  const cwd = tempProject();
+  const contract = { filesInScope: ["."], offLimits: [] };
+  const longPath = "src/" + "x".repeat(600);
+  const decision = evaluateToolCall("write", { path: longPath, content: "test" }, cwd, contract);
+  assert.equal(decision.block, true);
+  assert.match(decision.reason!, /path too long/);
+});
+
 test("bash guard blocks off-limits path references", () => {
   const cwd = tempProject();
   const contract = { filesInScope: ["src/"], offLimits: ["src/secret.ts"] };

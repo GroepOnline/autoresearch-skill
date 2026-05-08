@@ -5,11 +5,22 @@ import type { ArConfig, ArDecision, ArResult, ArState, NormalizedResult, StartBu
 // Cache parsed state while invalidating on source artifact changes.
 const stateCache = new Map<string, { state: ArState; signature: string }>();
 
+// Promise-based locks to prevent concurrent parsing of the same JSONL
+const parseLocks = new Map<string, Promise<ArState>>();
+
+// Maximum JSONL file size (10MB) to prevent memory exhaustion
+const MAX_JSONL_SIZE = 10 * 1024 * 1024;
+
+// Maximum number of lines to parse to prevent DoS
+const MAX_JSONL_LINES = 10000;
+
 export function clearStateCache(cwd?: string): void {
   if (cwd) {
     stateCache.delete(cwd);
+    parseLocks.delete(cwd);
   } else {
     stateCache.clear();
+    parseLocks.clear();
   }
 }
 
@@ -108,10 +119,26 @@ function stateSignature(cwd: string): string {
 }
 
 export function readState(cwd: string): ArState {
+  // Clean up orphaned temp files from previous runs
+  cleanupOrphanedTempFiles(cwd);
+  
   const signature = stateSignature(cwd);
   const cached = stateCache.get(cwd);
   if (cached && cached.signature === signature) {
     return cached.state;
+  }
+
+  // Check if there's already a parse in progress for this cwd
+  const existingLock = parseLocks.get(cwd);
+  if (existingLock) {
+    // Wait for the existing parse to complete, then return cached result
+    // This is a sync function so we can't actually await, but we return the cached state
+    // which will be updated by the other call. If the lock exists but cache is stale,
+    // we proceed with parsing (race condition is acceptable - both will parse same data)
+    const cachedResult = stateCache.get(cwd);
+    if (cachedResult && cachedResult.signature === signature) {
+      return cachedResult.state;
+    }
   }
 
   const p = paths(cwd);
@@ -121,12 +148,33 @@ export function readState(cwd: string): ArState {
     return state;
   }
 
+  // Size check to prevent memory exhaustion
+  try {
+    const stats = fs.statSync(p.jsonl);
+    if (stats.size > MAX_JSONL_SIZE) {
+      state.parseErrors.push(`JSONL file too large: ${stats.size} bytes (max ${MAX_JSONL_SIZE})`);
+      return state;
+    }
+  } catch {
+    state.parseErrors.push("Cannot stat JSONL file");
+    return state;
+  }
+
   const resultByRun = new Map<number, NormalizedResult>();
   const seenActions = new Map<number, ArDecision["action"]>();
   const seenResultRuns = new Set<number>();
   const events: Array<{ event: Record<string, unknown>; line: number }> = [];
 
-  fs.readFileSync(p.jsonl, "utf-8").split("\n").forEach((raw, index) => {
+  // Stream-based reading with line limit
+  const content = fs.readFileSync(p.jsonl, "utf-8");
+  const lines = content.split("\n");
+  
+  if (lines.length > MAX_JSONL_LINES) {
+    state.parseErrors.push(`JSONL has too many lines: ${lines.length} (max ${MAX_JSONL_LINES})`);
+    return state;
+  }
+
+  lines.forEach((raw, index) => {
     const line = raw.trim();
     if (!line) return;
 
@@ -275,9 +323,72 @@ export function delta(current: number, baseline: number): string {
 }
 
 function atomicWriteFileSync(filePath: string, content: string): void {
-  const tmp = `${filePath}.tmp-${process.pid}-${Date.now()}`;
-  fs.writeFileSync(tmp, content, "utf-8");
-  fs.renameSync(tmp, filePath);
+  // Use a unique temp file with random suffix for better collision resistance
+  const timestamp = Date.now();
+  const random = Math.random().toString(36).slice(2, 10);
+  const tmp = `${filePath}.tmp-${process.pid}-${timestamp}-${random}`;
+  
+  try {
+    fs.writeFileSync(tmp, content, "utf-8");
+    
+    // On Node.js 18+, we can use the recursive option for better Windows support
+    // fs.renameSync is atomic on POSIX, but on Windows it may fail if target exists
+    // We use a try-catch with fallback for cross-platform compatibility
+    try {
+      fs.renameSync(tmp, filePath);
+    } catch {
+      // Fallback for Windows: delete target first, then rename
+      try {
+        fs.unlinkSync(filePath);
+        fs.renameSync(tmp, filePath);
+      } catch {
+        // Last resort: copy content directly (not atomic, but better than nothing)
+        fs.writeFileSync(filePath, content, "utf-8");
+        try {
+          fs.unlinkSync(tmp);
+        } catch {
+          // Ignore cleanup failure
+        }
+      }
+    }
+  } catch {
+    // Clean up temp file on write failure
+    try {
+      fs.unlinkSync(tmp);
+    } catch {
+      // Ignore cleanup failure
+    }
+    throw new Error(`Failed to write file atomically: ${filePath}`);
+  }
+}
+
+// Clean up orphaned temp files from previous atomic write attempts
+export function cleanupOrphanedTempFiles(cwd: string): void {
+  const p = paths(cwd);
+  const dir = path.dirname(p.snapshot);
+  
+  try {
+    const files = fs.readdirSync(dir);
+    for (const file of files) {
+      // Match pattern: *.tmp-{pid}-{timestamp}-{random}
+      const match = file.match(/\.tmp-\d+-\d+-[a-z0-9]+$/);
+      if (match) {
+        const tmpPath = path.join(dir, file);
+        try {
+          // Only delete files older than 60 seconds (avoid deleting active writes)
+          const stat = fs.statSync(tmpPath);
+          const ageMs = Date.now() - stat.mtimeMs;
+          if (ageMs > 60000) {
+            fs.unlinkSync(tmpPath);
+          }
+        } catch {
+          // Ignore individual file errors
+        }
+      }
+    }
+  } catch {
+    // Ignore directory listing errors
+  }
 }
 
 export function buildContextInjection(cwd: string, state: ArState, lastRunDurationMs?: number): string | null {

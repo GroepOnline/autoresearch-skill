@@ -99,3 +99,37 @@ test("parseStartBudgets defaults invalid values and accepts explicit values", ()
   assert.deepEqual(parseStartBudgets(["12", "45"]), { maxRuns: 12, maxMinutes: 45 });
   assert.deepEqual(parseStartBudgets(["0", "nope"]), { maxRuns: 5, maxMinutes: 30 });
 });
+
+test("readState blocks oversized JSONL files", () => {
+  const cwd = tempProject();
+  
+  // Create a config line that we'll repeat many times
+  const configLine = JSON.stringify({
+    type: "result",
+    run: 1,
+    metric: "test",
+    median: 100,
+    timestamp: "t",
+  });
+  
+  // Build a JSONL that exceeds the line limit (10000 lines)
+  const lines = [
+    JSON.stringify({
+      type: "config",
+      schema_version: 1,
+      name: "test",
+      metric: "test",
+      direction: "lower",
+      created_at: "2026-05-06T12:00:00Z",
+    }),
+  ];
+  
+  for (let i = 1; i <= 11000; i++) {
+    lines.push(JSON.stringify({ type: "result", run: i + 1, metric: "test", median: i, timestamp: "t" }));
+  }
+  
+  writeFileSync(paths(cwd).jsonl, lines.join("\n") + "\n");
+  
+  const state = readState(cwd);
+  assert.ok(state.parseErrors.some(error => error.includes("too many lines")));
+});

@@ -33,6 +33,10 @@ export function getMaxDiffLines(): number {
   return currentMaxDiffLines;
 }
 
+// Maximum input sizes to prevent DoS
+const MAX_COMMAND_LENGTH = 10000;  // 10KB max command length
+const MAX_PATH_LENGTH = 500;       // 500 chars max path length
+
 const DEFAULT_PROTECTED_PATTERNS = [
   /^\.git(?:\/|$)/,
   /^node_modules(?:\/|$)/,
@@ -243,6 +247,11 @@ function evaluatePathMutation(cwd: string, rawPath: unknown, contract: Autoresea
     return { block: true, reason: "Autoresearch policy: mutation path is missing." };
   }
 
+  // Size validation to prevent DoS
+  if (rawPath.length > MAX_PATH_LENGTH) {
+    return { block: true, reason: `Autoresearch policy: path too long (${rawPath.length} chars, max ${MAX_PATH_LENGTH})` };
+  }
+
   const relPath = normalizeRelativePath(cwd, rawPath);
   if (relPath.startsWith("..")) {
     return { block: true, reason: `Autoresearch policy: path escapes project root: ${rawPath}` };
@@ -263,6 +272,11 @@ function evaluatePathMutation(cwd: string, rawPath: unknown, contract: Autoresea
 }
 
 export function evaluateBashCommand(command: string, _cwd?: string, contract?: AutoresearchContract): PolicyDecision {
+  // Size validation to prevent DoS
+  if (command.length > MAX_COMMAND_LENGTH) {
+    return { block: true, reason: `Autoresearch policy: command too long (${command.length} chars, max ${MAX_COMMAND_LENGTH})` };
+  }
+  
   const compact = command.replace(/\\\n/g, "\n");
   
   // Check always-blocked patterns first (defense in depth)
