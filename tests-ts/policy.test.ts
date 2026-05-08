@@ -57,8 +57,8 @@ test("start contract validation rejects empty scope and placeholders", () => {
 `);
 
   const errors = validateContractForStart(contract);
-  assert.ok(errors.some(error => error.includes("placeholders")));
-  assert.ok(errors.some(error => error.includes("Files in Scope")));
+  assert.ok(errors.some((error) => error.includes("placeholders")));
+  assert.ok(errors.some((error) => error.includes("Files in Scope")));
 });
 
 test("contract validation rejects path traversal and invalid syntax", () => {
@@ -75,8 +75,8 @@ test("contract validation rejects path traversal and invalid syntax", () => {
 `);
 
   const errors = validateContractForStart(contract);
-  assert.ok(errors.some(error => error.includes("path traversal")));
-  assert.ok(errors.some(error => error.includes("invalid characters")));
+  assert.ok(errors.some((error) => error.includes("path traversal")));
+  assert.ok(errors.some((error) => error.includes("invalid characters")));
 });
 
 test("evaluateToolCall blocks protected and off-limits paths", () => {
@@ -94,15 +94,24 @@ test("root Files in Scope allows normal project mutations", () => {
   const contract = { filesInScope: ["."], offLimits: [] };
 
   assert.equal(evaluateToolCall("edit", { path: "src/parser.ts" }, cwd, contract).block, false);
-  assert.equal(evaluateToolCall("write", { path: "nested/output.txt", content: "x" }, cwd, contract).block, false);
+  assert.equal(
+    evaluateToolCall("write", { path: "nested/output.txt", content: "x" }, cwd, contract).block,
+    false
+  );
 });
 
 test("empty Files in Scope blocks non-runtime mutations", () => {
   const cwd = tempProject();
   const contract = { filesInScope: [], offLimits: [] };
 
-  assert.equal(evaluateToolCall("write", { path: "src/parser.ts", content: "x" }, cwd, contract).block, true);
-  assert.equal(evaluateToolCall("write", { path: "autoresearch.jsonl", content: "{}" }, cwd, contract).block, false);
+  assert.equal(
+    evaluateToolCall("write", { path: "src/parser.ts", content: "x" }, cwd, contract).block,
+    true
+  );
+  assert.equal(
+    evaluateToolCall("write", { path: "autoresearch.jsonl", content: "{}" }, cwd, contract).block,
+    false
+  );
 });
 
 test("runtime artifacts are allowed even with narrow scope", () => {
@@ -110,8 +119,14 @@ test("runtime artifacts are allowed even with narrow scope", () => {
   const contract = { filesInScope: ["src/parser.ts"], offLimits: [] };
 
   assert.equal(isRuntimeArtifact("autoresearch.jsonl"), true);
-  assert.equal(evaluateToolCall("write", { path: "autoresearch.jsonl" }, cwd, contract).block, false);
-  assert.equal(evaluateToolCall("write", { path: "experiments/worklog.md" }, cwd, contract).block, false);
+  assert.equal(
+    evaluateToolCall("write", { path: "autoresearch.jsonl" }, cwd, contract).block,
+    false
+  );
+  assert.equal(
+    evaluateToolCall("write", { path: "experiments/worklog.md" }, cwd, contract).block,
+    false
+  );
 });
 
 test("dirty git start filter allows runtime artifacts created by /new", () => {
@@ -176,7 +191,7 @@ test("input size validation blocks oversized commands and paths", () => {
   const longCommand = "npm test " + "x".repeat(15000);
   assert.equal(evaluateBashCommand(longCommand).block, true);
   assert.match(evaluateBashCommand(longCommand).reason!, /command too long/);
-  
+
   // Path too long (over 500 chars)
   const cwd = tempProject();
   const contract = { filesInScope: ["."], offLimits: [] };
@@ -190,7 +205,12 @@ test("bash guard blocks off-limits path references", () => {
   const cwd = tempProject();
   const contract = { filesInScope: ["src/"], offLimits: ["src/secret.ts"] };
 
-  const decision = evaluateToolCall("bash", { command: "node scripts/write.js src/secret.ts" }, cwd, contract);
+  const decision = evaluateToolCall(
+    "bash",
+    { command: "node scripts/write.js src/secret.ts" },
+    cwd,
+    contract
+  );
   assert.equal(decision.block, true);
   assert.match(decision.reason!, /off-limits/);
 });

@@ -4,9 +4,12 @@ import { z } from "zod";
 import { delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { dashboardRows } from "./ui.js";
 
-function parseMetricLines(text: string): Array<{ name: string; value: number; attrs: Record<string, string> }> {
+function parseMetricLines(
+  text: string
+): Array<{ name: string; value: number; attrs: Record<string, string> }> {
   const results: Array<{ name: string; value: number; attrs: Record<string, string> }> = [];
-  const re = /^METRIC\s+([A-Za-z_][A-Za-z0-9_.:-]*)=([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(?:\s+(.*))?$/;
+  const re =
+    /^METRIC\s+([A-Za-z_][A-Za-z0-9_.:-]*)=([-+]?(?:\d+(?:\.\d*)?|\.\d+)(?:[eE][+-]?\d+)?)(?:\s+(.*))?$/;
   for (const line of text.split("\n")) {
     const match = re.exec(line.trim());
     if (!match) continue;
@@ -61,7 +64,6 @@ const DashboardInputSchema = z.object({
   write_file: z.boolean().optional(),
 });
 
-
 export interface MetricDecisionInput {
   candidate: number;
   best?: number | null;
@@ -90,11 +92,13 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
   } = input;
 
   if (!Number.isFinite(candidate)) throw new Error("candidate must be a finite number");
-  if (!["lower", "higher"].includes(direction)) throw new Error("direction must be lower or higher");
+  if (!["lower", "higher"].includes(direction))
+    throw new Error("direction must be lower or higher");
 
   if (!tests_passed) return { action: "discard", reason: "correctness checks failed" };
   if (noisy) return { action: "stop", reason: "benchmark noise too high" };
-  if (best === undefined || best === null) return { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 };
+  if (best === undefined || best === null)
+    return { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 };
   if (!Number.isFinite(best)) throw new Error("best must be a finite number when provided");
 
   const threshold = Math.max(min_effect_size_pct, noise_floor_pct);
@@ -105,9 +109,10 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
       : { action: "discard", reason: "zero best value requires strict absolute improvement" };
   }
 
-  const improvementPct = direction === "lower"
-    ? ((best - candidate) / Math.abs(best)) * 100
-    : ((candidate - best) / Math.abs(best)) * 100;
+  const improvementPct =
+    direction === "lower"
+      ? ((best - candidate) / Math.abs(best)) * 100
+      : ((candidate - best) / Math.abs(best)) * 100;
 
   if (improvementPct >= threshold) {
     return {
@@ -126,7 +131,11 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
 
 function captureCommit(cwd: string): string | null {
   try {
-    const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    const result = spawnSync("git", ["rev-parse", "HEAD"], {
+      cwd,
+      encoding: "utf-8",
+      stdio: ["pipe", "pipe", "pipe"],
+    });
     return result.status === 0 ? result.stdout.trim() || null : null;
   } catch {
     return null;
@@ -138,7 +147,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_state",
     label: "Autoresearch State",
-    description: "Read and validate autoresearch.jsonl. Returns config, run counts, baseline, current best, and parse errors.",
+    description:
+      "Read and validate autoresearch.jsonl. Returns config, run counts, baseline, current best, and parse errors.",
     promptSnippet: "Read and validate the autoresearch JSONL state",
     promptGuidelines: [
       "Use autoresearch_state to inspect the current experiment before starting or resuming a run.",
@@ -160,10 +170,15 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       } else {
         lines.push(`Session: ${config.name}`);
         lines.push(`Metric: ${metricName(config)} (${direction(config)})`);
-        lines.push(`Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`);
-        if (state.baselineMetric !== null) lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
+        lines.push(
+          `Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`
+        );
+        if (state.baselineMetric !== null)
+          lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
         if (state.bestMetric !== null && state.bestRun !== null) {
-          lines.push(`Best: ${fmt(state.bestMetric, metricUnit(config))} run #${state.bestRun} ${delta(state.bestMetric, state.baselineMetric ?? 0)}`);
+          lines.push(
+            `Best: ${fmt(state.bestMetric, metricUnit(config))} run #${state.bestRun} ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+          );
         }
         const last = state.results.at(-1);
         if (last) lines.push(`Last: run #${last.run} → ${last.status} — ${last.description}`);
@@ -193,7 +208,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_metric",
     label: "Autoresearch Metric",
-    description: "Parse METRIC lines from benchmark output and compute median summary. Input: raw benchmark stdout text.",
+    description:
+      "Parse METRIC lines from benchmark output and compute median summary. Input: raw benchmark stdout text.",
     promptSnippet: "Parse METRIC lines from benchmark output and compute medians",
     promptGuidelines: [
       "Use autoresearch_metric to parse benchmark output after running ./autoresearch.sh.",
@@ -203,7 +219,10 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       type: "object",
       properties: {
         output: { type: "string", description: "Raw benchmark stdout to parse for METRIC lines." },
-        primary_metric: { type: "string", description: "Name of primary metric to summarize. Defaults to first found." },
+        primary_metric: {
+          type: "string",
+          description: "Name of primary metric to summarize. Defaults to first found.",
+        },
       },
       required: ["output"],
       additionalProperties: false,
@@ -212,19 +231,23 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       const validated = MetricInputSchema.parse(params);
       const metrics = parseMetricLines(validated.output);
       if (metrics.length === 0) {
-        throw new Error("No METRIC lines found in output. Benchmark must print at least one: METRIC name=value direction=lower|higher");
+        throw new Error(
+          "No METRIC lines found in output. Benchmark must print at least one: METRIC name=value direction=lower|higher"
+        );
       }
 
       const primaryName = validated.primary_metric ?? metrics[0].name;
-      const primaryValues = metrics.filter(m => m.name === primaryName).map(m => m.value);
-      if (primaryValues.length === 0) throw new Error(`Primary metric '${primaryName}' not found in output.`);
+      const primaryValues = metrics.filter((m) => m.name === primaryName).map((m) => m.value);
+      if (primaryValues.length === 0)
+        throw new Error(`Primary metric '${primaryName}' not found in output.`);
 
       const primaryMedian = median(primaryValues);
-      const primaryDirection = metrics.find(m => m.name === primaryName)?.attrs?.direction ?? "lower";
+      const primaryDirection =
+        metrics.find((m) => m.name === primaryName)?.attrs?.direction ?? "lower";
       const primaryCV = cv(primaryValues);
       const commit = captureCommit(ctx.cwd);
 
-      const allNames = [...new Set(metrics.map(m => m.name))];
+      const allNames = [...new Set(metrics.map((m) => m.name))];
       const summaryLines: string[] = [
         `Primary: ${primaryName}=${primaryMedian} (direction=${primaryDirection}, samples=${primaryValues.length})`,
       ];
@@ -233,11 +256,13 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       const state = readState(ctx.cwd);
       const noiseThreshold = state.config?.noise_floor_pct ?? 5; // CV > threshold% triggers noise warning
       if (primaryValues.length >= 3 && primaryCV > noiseThreshold) {
-        summaryLines.push(`⚠️ High noise: CV ${primaryCV.toFixed(1)}% (threshold ${noiseThreshold}%). Consider running more samples.`);
+        summaryLines.push(
+          `⚠️ High noise: CV ${primaryCV.toFixed(1)}% (threshold ${noiseThreshold}%). Consider running more samples.`
+        );
       }
 
-      for (const name of allNames.filter(n => n !== primaryName)) {
-        const vals = metrics.filter(m => m.name === name).map(m => m.value);
+      for (const name of allNames.filter((n) => n !== primaryName)) {
+        const vals = metrics.filter((m) => m.name === name).map((m) => m.value);
         summaryLines.push(`  ${name}=${median(vals)} (samples=${vals.length})`);
       }
 
@@ -245,8 +270,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
 
       // ── Build secondary metrics map ───────────────────────────────────────
       const secondaryMetrics: Record<string, number> = {};
-      for (const name of allNames.filter(n => n !== primaryName)) {
-        secondaryMetrics[name] = median(metrics.filter(m => m.name === name).map(m => m.value));
+      for (const name of allNames.filter((n) => n !== primaryName)) {
+        secondaryMetrics[name] = median(metrics.filter((m) => m.name === name).map((m) => m.value));
       }
 
       return {
@@ -259,7 +284,9 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           primaryCV,
           noisy: primaryCV > noiseThreshold,
           noiseThreshold,
-          allMetrics: Object.fromEntries(allNames.map(n => [n, metrics.filter(m => m.name === n).map(m => m.value)])),
+          allMetrics: Object.fromEntries(
+            allNames.map((n) => [n, metrics.filter((m) => m.name === n).map((m) => m.value)])
+          ),
           secondaryMetrics: Object.keys(secondaryMetrics).length > 0 ? secondaryMetrics : undefined,
           commit,
         },
@@ -271,7 +298,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_decide",
     label: "Autoresearch Decide",
-    description: "Decide baseline/keep/discard/stop for a candidate metric value against the current best. Returns action and reason.",
+    description:
+      "Decide baseline/keep/discard/stop for a candidate metric value against the current best. Returns action and reason.",
     promptSnippet: "Decide keep/discard/stop for a candidate metric against current best",
     promptGuidelines: [
       "Use autoresearch_decide after measuring a candidate to get a keep/discard/stop decision.",
@@ -280,13 +308,29 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     parameters: {
       type: "object",
       properties: {
-        candidate: { type: "number", description: "The candidate metric value (median from current run)." },
+        candidate: {
+          type: "number",
+          description: "The candidate metric value (median from current run).",
+        },
         best: { type: "number", description: "Current best metric value. Omit for baseline runs." },
-        direction: { type: "string", enum: ["lower", "higher"], description: "lower or higher is better." },
-        min_effect_size_pct: { type: "number", description: "Minimum improvement % to keep. Default: 3." },
+        direction: {
+          type: "string",
+          enum: ["lower", "higher"],
+          description: "lower or higher is better.",
+        },
+        min_effect_size_pct: {
+          type: "number",
+          description: "Minimum improvement % to keep. Default: 3.",
+        },
         noise_floor_pct: { type: "number", description: "Noise floor %. Default: 0." },
-        tests_passed: { type: "boolean", description: "Whether correctness checks passed. Default: true." },
-        noisy: { type: "boolean", description: "Whether benchmark was too noisy for a reliable result. Default: false." },
+        tests_passed: {
+          type: "boolean",
+          description: "Whether correctness checks passed. Default: true.",
+        },
+        noisy: {
+          type: "boolean",
+          description: "Whether benchmark was too noisy for a reliable result. Default: false.",
+        },
       },
       required: ["candidate", "direction"],
       additionalProperties: false,
@@ -304,7 +348,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_dashboard",
     label: "Autoresearch Dashboard",
-    description: "Generate a markdown dashboard summary from autoresearch.jsonl. Includes config, run history, and best result.",
+    description:
+      "Generate a markdown dashboard summary from autoresearch.jsonl. Includes config, run history, and best result.",
     promptSnippet: "Generate a markdown dashboard from autoresearch JSONL state",
     promptGuidelines: [
       "Use autoresearch_dashboard to summarize the experiment progress and best results.",
@@ -313,7 +358,10 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     parameters: {
       type: "object",
       properties: {
-        write_file: { type: "boolean", description: "If true, write dashboard to autoresearch-dashboard.md. Default: false." },
+        write_file: {
+          type: "boolean",
+          description: "If true, write dashboard to autoresearch-dashboard.md. Default: false.",
+        },
       },
       additionalProperties: false,
     },

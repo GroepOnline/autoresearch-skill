@@ -1,6 +1,14 @@
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { ArConfig, ArDecision, ArResult, ArState, NormalizedResult, StartBudgets } from "./types.js";
+import type {
+  ArConfig,
+  ArDecision,
+  ArResult,
+  ArState,
+  NormalizedResult,
+  StartBudgets,
+} from "./types.js";
+import { logger } from "./logger.js";
 
 // Cache parsed state while invalidating on source artifact changes.
 const stateCache = new Map<string, { state: ArState; signature: string }>();
@@ -105,6 +113,7 @@ function artifactSignature(filePath: string): string {
     const stat = fs.statSync(filePath);
     return `${filePath}:${stat.size}:${stat.mtimeMs}`;
   } catch {
+    logger.debug("artifactSignature: file not accessible", { filePath });
     return `${filePath}:missing`;
   }
 }
@@ -121,7 +130,7 @@ function stateSignature(cwd: string): string {
 export function readState(cwd: string): ArState {
   // Clean up orphaned temp files from previous runs
   cleanupOrphanedTempFiles(cwd);
-  
+
   const signature = stateSignature(cwd);
   const cached = stateCache.get(cwd);
   if (cached && cached.signature === signature) {
@@ -152,10 +161,13 @@ export function readState(cwd: string): ArState {
   try {
     const stats = fs.statSync(p.jsonl);
     if (stats.size > MAX_JSONL_SIZE) {
-      state.parseErrors.push(`JSONL file too large: ${stats.size} bytes (max ${MAX_JSONL_SIZE})`);
+      const errorMsg = `JSONL file too large: ${stats.size} bytes (max ${MAX_JSONL_SIZE})`;
+      logger.warn("readState: " + errorMsg, { cwd, size: stats.size, max: MAX_JSONL_SIZE });
+      state.parseErrors.push(errorMsg);
       return state;
     }
-  } catch {
+  } catch (error) {
+    logger.catch("readState: stat JSONL", error, { cwd });
     state.parseErrors.push("Cannot stat JSONL file");
     return state;
   }
@@ -168,9 +180,11 @@ export function readState(cwd: string): ArState {
   // Stream-based reading with line limit
   const content = fs.readFileSync(p.jsonl, "utf-8");
   const lines = content.split("\n");
-  
+
   if (lines.length > MAX_JSONL_LINES) {
-    state.parseErrors.push(`JSONL has too many lines: ${lines.length} (max ${MAX_JSONL_LINES})`);
+    const errorMsg = `JSONL has too many lines: ${lines.length} (max ${MAX_JSONL_LINES})`;
+    logger.warn("readState: " + errorMsg, { cwd, lines: lines.length, max: MAX_JSONL_LINES });
+    state.parseErrors.push(errorMsg);
     return state;
   }
 
@@ -182,7 +196,9 @@ export function readState(cwd: string): ArState {
     try {
       event = JSON.parse(line);
     } catch (error) {
-      state.parseErrors.push(`line ${index + 1}: invalid JSON (${String(error)})`);
+      const errorMsg = `line ${index + 1}: invalid JSON (${String(error)})`;
+      logger.debug("readState: JSON parse error", { line: index + 1 });
+      state.parseErrors.push(errorMsg);
       return;
     }
 
@@ -209,11 +225,16 @@ export function readState(cwd: string): ArState {
     if (eventType === "config") {
       seenConfig = true;
       const config = event as unknown as ArConfig;
-      if (config.schema_version !== 1) state.parseErrors.push(`line ${line}: config.schema_version must be 1`);
-      if (typeof config.name !== "string" || !config.name) state.parseErrors.push(`line ${line}: config.name is required`);
-      if (typeof config.metric !== "string" || !config.metric) state.parseErrors.push(`line ${line}: config.metric is required`);
-      if (!config.direction || !["lower", "higher"].includes(config.direction)) state.parseErrors.push(`line ${line}: config.direction must be lower or higher`);
-      if (typeof config.created_at !== "string" || !config.created_at) state.parseErrors.push(`line ${line}: config.created_at is required`);
+      if (config.schema_version !== 1)
+        state.parseErrors.push(`line ${line}: config.schema_version must be 1`);
+      if (typeof config.name !== "string" || !config.name)
+        state.parseErrors.push(`line ${line}: config.name is required`);
+      if (typeof config.metric !== "string" || !config.metric)
+        state.parseErrors.push(`line ${line}: config.metric is required`);
+      if (!config.direction || !["lower", "higher"].includes(config.direction))
+        state.parseErrors.push(`line ${line}: config.direction must be lower or higher`);
+      if (typeof config.created_at !== "string" || !config.created_at)
+        state.parseErrors.push(`line ${line}: config.created_at is required`);
       state.config = config;
       state.currentSegment = config.segment ?? state.currentSegment;
       continue;
@@ -235,11 +256,17 @@ export function readState(cwd: string): ArState {
         state.parseErrors.push(`line ${line}: result.metric is required`);
       }
       if (resultValue(result) === null) {
-        state.parseErrors.push(`line ${line}: result.value or result.median must be a finite number`);
+        state.parseErrors.push(
+          `line ${line}: result.value or result.median must be a finite number`
+        );
       }
       if ("samples" in result) {
         const samples = result.samples;
-        if (!Array.isArray(samples) || samples.length === 0 || samples.some(sample => !isFiniteNumber(sample))) {
+        if (
+          !Array.isArray(samples) ||
+          samples.length === 0 ||
+          samples.some((sample) => !isFiniteNumber(sample))
+        ) {
           state.parseErrors.push(`line ${line}: result.samples must be a non-empty numeric list`);
         }
       }
@@ -264,7 +291,9 @@ export function readState(cwd: string): ArState {
       if (!Number.isInteger(decision.run) || decision.run <= 0) {
         state.parseErrors.push(`line ${line}: decision.run must be a positive integer`);
       } else if (!seenResultRuns.has(decision.run)) {
-        state.parseErrors.push(`line ${line}: decision.run ${decision.run} has no preceding result`);
+        state.parseErrors.push(
+          `line ${line}: decision.run ${decision.run} has no preceding result`
+        );
       }
       if (!["keep", "discard", "baseline", "stop"].includes(decision.action)) {
         state.parseErrors.push(`line ${line}: decision.action is invalid`);
@@ -276,21 +305,25 @@ export function readState(cwd: string): ArState {
         state.parseErrors.push(`line ${line}: decision.timestamp is required`);
       }
       state.decisions.push(decision);
-      if (Number.isInteger(decision.run) && decision.run > 0) seenActions.set(decision.run, decision.action);
+      if (Number.isInteger(decision.run) && decision.run > 0)
+        seenActions.set(decision.run, decision.action);
       continue;
     }
 
     state.parseErrors.push(`line ${line}: unknown event type ${JSON.stringify(eventType)}`);
   }
 
-  const baselineDecision = state.decisions.find(d => d.action === "baseline");
-  const baselineResult = baselineDecision ? resultByRun.get(baselineDecision.run) : state.results[0];
+  const baselineDecision = state.decisions.find((d) => d.action === "baseline");
+  const baselineResult = baselineDecision
+    ? resultByRun.get(baselineDecision.run)
+    : state.results[0];
   state.baselineMetric = baselineResult?.value ?? null;
 
   const dir = state.config ? direction(state.config) : "lower";
   for (const result of state.results) {
     const action = seenActions.get(result.run);
-    const isBestCandidate = action === "baseline" || action === "keep" || (!action && result.run === baselineResult?.run);
+    const isBestCandidate =
+      action === "baseline" || action === "keep" || (!action && result.run === baselineResult?.run);
     if (!isBestCandidate) continue;
 
     if (
@@ -303,9 +336,11 @@ export function readState(cwd: string): ArState {
   }
 
   state.runCount = state.results.length;
-  state.keptCount = [...seenActions.values()].filter(action => action === "keep" || action === "baseline").length;
-  state.discardedCount = [...seenActions.values()].filter(action => action === "discard").length;
-  state.crashedCount = state.results.filter(result => result.status === "crash").length;
+  state.keptCount = [...seenActions.values()].filter(
+    (action) => action === "keep" || action === "baseline"
+  ).length;
+  state.discardedCount = [...seenActions.values()].filter((action) => action === "discard").length;
+  state.crashedCount = state.results.filter((result) => result.status === "crash").length;
 
   stateCache.set(cwd, { state, signature });
 
@@ -327,22 +362,26 @@ function atomicWriteFileSync(filePath: string, content: string): void {
   const timestamp = Date.now();
   const random = Math.random().toString(36).slice(2, 10);
   const tmp = `${filePath}.tmp-${process.pid}-${timestamp}-${random}`;
-  
+
   try {
     fs.writeFileSync(tmp, content, "utf-8");
-    
+
     // On Node.js 18+, we can use the recursive option for better Windows support
     // fs.renameSync is atomic on POSIX, but on Windows it may fail if target exists
     // We use a try-catch with fallback for cross-platform compatibility
     try {
       fs.renameSync(tmp, filePath);
+      logger.debug("atomicWriteFileSync: wrote file", { filePath, size: content.length });
     } catch {
       // Fallback for Windows: delete target first, then rename
+      logger.debug("atomicWriteFileSync: rename failed, trying Windows fallback", { filePath });
       try {
         fs.unlinkSync(filePath);
         fs.renameSync(tmp, filePath);
+        logger.debug("atomicWriteFileSync: Windows fallback succeeded", { filePath });
       } catch {
         // Last resort: copy content directly (not atomic, but better than nothing)
+        logger.warn("atomicWriteFileSync: atomic rename failed, using direct write", { filePath });
         fs.writeFileSync(filePath, content, "utf-8");
         try {
           fs.unlinkSync(tmp);
@@ -351,14 +390,15 @@ function atomicWriteFileSync(filePath: string, content: string): void {
         }
       }
     }
-  } catch {
+  } catch (error) {
     // Clean up temp file on write failure
+    logger.catch("atomicWriteFileSync: write failed", error, { filePath });
     try {
       fs.unlinkSync(tmp);
     } catch {
       // Ignore cleanup failure
     }
-    throw new Error(`Failed to write file atomically: ${filePath}`);
+    throw new Error(`Failed to write file atomically: ${filePath}`, { cause: error });
   }
 }
 
@@ -366,7 +406,7 @@ function atomicWriteFileSync(filePath: string, content: string): void {
 export function cleanupOrphanedTempFiles(cwd: string): void {
   const p = paths(cwd);
   const dir = path.dirname(p.snapshot);
-  
+
   try {
     const files = fs.readdirSync(dir);
     for (const file of files) {
@@ -391,14 +431,18 @@ export function cleanupOrphanedTempFiles(cwd: string): void {
   }
 }
 
-export function buildContextInjection(cwd: string, state: ArState, lastRunDurationMs?: number): string | null {
+export function buildContextInjection(
+  cwd: string,
+  state: ArState,
+  lastRunDurationMs?: number
+): string | null {
   const p = paths(cwd);
   if (!fs.existsSync(p.context) || fs.existsSync(p.sentinel)) return null;
   if (state.parseErrors.length > 0) {
     return [
       "## Autoresearch blocked",
       "autoresearch.jsonl has parse or schema errors. Fix these before continuing:",
-      ...state.parseErrors.map(error => `- ${error}`),
+      ...state.parseErrors.map((error) => `- ${error}`),
     ].join("\n");
   }
 
@@ -416,7 +460,8 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
   md += `| Metric | Waarde |\n`;
   md += `|--------|--------|\n`;
   md += `| Runs | ${state.runCount} (✅ ${state.keptCount} keep / ❌ ${state.discardedCount} discard / 💥 ${state.crashedCount} crash) |\n`;
-  if (state.baselineMetric !== null) md += `| Baseline ${metricName(config)} | ${fmt(state.baselineMetric, metricUnit(config))} |\n`;
+  if (state.baselineMetric !== null)
+    md += `| Baseline ${metricName(config)} | ${fmt(state.baselineMetric, metricUnit(config))} |\n`;
   if (state.bestMetric !== null && state.bestRun !== null) {
     md += `| Best ${metricName(config)} | ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)} |\n`;
   }
@@ -432,8 +477,15 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
     md += `| Run | Result | Status | Commit | Description |\n`;
     md += `|-----|--------|--------|--------|-------------|\n`;
     for (const r of recent) {
-      const action = state.decisions.find(d => d.run === r.run)?.action ?? r.status;
-      const icon = action === "keep" || action === "baseline" ? "✅" : action === "discard" ? "❌" : r.status === "crash" ? "💥" : "·";
+      const action = state.decisions.find((d) => d.run === r.run)?.action ?? r.status;
+      const icon =
+        action === "keep" || action === "baseline"
+          ? "✅"
+          : action === "discard"
+            ? "❌"
+            : r.status === "crash"
+              ? "💥"
+              : "·";
       const d = state.baselineMetric !== null ? delta(r.value, state.baselineMetric) : "";
       const commitShort = r.commit ? r.commit.slice(0, 7) : "-";
       md += `| ${r.run} | ${fmt(r.value, metricUnit(config))} ${d} | ${icon} ${action} | \`${commitShort}\` | ${r.description.slice(0, 60)} |\n`;
@@ -460,7 +512,7 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
     kept: state.keptCount,
     discarded: state.discardedCount,
     crashed: state.crashedCount,
-    lastDecisions: state.decisions.slice(-5).map(d => ({
+    lastDecisions: state.decisions.slice(-5).map((d) => ({
       run: d.run,
       action: d.action,
       reason: d.reason,
@@ -468,7 +520,9 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
   };
   try {
     atomicWriteFileSync(p.snapshot, `${JSON.stringify(snapshot, null, 2)}\n`);
-  } catch { /* best-effort: don't block context injection on snapshot failure */ }
+  } catch {
+    /* best-effort: don't block context injection on snapshot failure */
+  }
 
   md += `\n### Regels\n`;
   md += `- ÉÉN hypothese per run\n`;

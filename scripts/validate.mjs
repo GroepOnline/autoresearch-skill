@@ -17,4 +17,5 @@ function run(label, command, args) {
 
 run("Python tests", process.execPath, [join(root, "scripts", "run-python-tests.mjs")]);
 run("TypeScript tests", process.execPath, [join(root, "scripts", "run-ts-tests.mjs")]);
+run("ESLint", process.execPath, [join(root, "node_modules", "eslint", "bin", "eslint.js"), "extensions/**/*.ts", "--max-warnings", "0"]);
 run("TypeScript typecheck", process.execPath, [join(root, "node_modules", "typescript", "bin", "tsc"), "--noEmit"]);
