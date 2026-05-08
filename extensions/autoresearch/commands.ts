@@ -3,7 +3,7 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage } from "./loop.js";
-import { dirtyUserPaths, readContract, setMaxDiffLines, validateContractForStart } from "./policy.js";
+import { dirtyUserPaths, ensureAutoresearchBranch, gitIsolationStatus, readContract, setMaxDiffLines, validateContractForStart } from "./policy.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import type { ArConfig, ArState } from "./types.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
@@ -88,6 +88,12 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             if (!ok) return;
           }
           fs.mkdirSync(path.join(ctx.cwd, "experiments"), { recursive: true });
+
+          const isolation = ensureAutoresearchBranch(ctx.cwd, goal);
+          if (!isolation.ok) {
+            ctx.ui.notify(`⚠️ Git-isolatie niet automatisch ingesteld: ${isolation.reason}`, "warning");
+          }
+
           fs.writeFileSync(p.context, [
             `# Autoresearch: ${goal}`,
             "",
@@ -95,17 +101,17 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             goal,
             "",
             "## Metrics",
-            "- **Primary**: <metric_name> (<unit>, lower/higher is better)",
-            "- **Secondary**: optional correctness, size, memory, or latency guardrails",
+            "- **Primary**: run_seconds (s, lower is better)",
+            "- **Secondary**: correctness pass/fail guardrail",
             "",
             "## How to Run",
             "`./autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
             "",
             "## Files in Scope",
-            "- <Every file or directory the agent may change>",
+            "- .",
             "",
             "## Off Limits",
-            "- <Files, APIs, or behaviors that must not change; use `none` if there are none>",
+            "- none",
             "",
             "## Constraints",
             "- Tests must pass before any keep decision.",
@@ -121,10 +127,21 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
               "#!/usr/bin/env bash",
               "set -euo pipefail",
               "",
-              "# Run correctness checks and benchmark, then print METRIC lines:",
-              "#   METRIC latency_ms=12.4 direction=lower",
-              "echo 'autoresearch.sh is not configured yet — edit it before starting.' >&2",
-              "exit 2",
+              "start_ms=$(node -e \"process.stdout.write(String(Date.now()))\")",
+              "",
+              "if [ -x scripts/validate.sh ]; then",
+              "  bash scripts/validate.sh",
+              "elif [ -f package.json ] && command -v npm >/dev/null 2>&1; then",
+              "  npm test",
+              "elif [ -d tests ] && command -v python3 >/dev/null 2>&1; then",
+              "  python3 -m unittest discover -s tests -p 'test_*.py'",
+              "elif [ -d tests ] && command -v python >/dev/null 2>&1; then",
+              "  python -m unittest discover -s tests -p 'test_*.py'",
+              "fi",
+              "",
+              "end_ms=$(node -e \"process.stdout.write(String(Date.now()))\")",
+              "run_seconds=$(node -e \"const s=Number(process.argv[1]); const e=Number(process.argv[2]); process.stdout.write(((e-s)/1000).toFixed(6));\" \"$start_ms\" \"$end_ms\")",
+              "echo \"METRIC run_seconds=${run_seconds} direction=lower\"",
             ].join("\n"), { mode: 0o755 });
           }
           if (!fs.existsSync(p.worklog)) {
@@ -145,13 +162,14 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           ctx.ui.setStatus("autoresearch", footerText(state));
           ctx.ui.notify([
             `✅ Autoresearch sessie '${goal}' aangemaakt!`,
+            isolation.ok && isolation.branch ? `🪵 Geïsoleerde branch actief: ${isolation.branch}` : "",
             "",
             "Volgende stappen:",
-            "1. Bewerk autoresearch.md — metrics, scope, constraints; verwijder alle <placeholders>",
-            "2. Bewerk autoresearch.sh — implementeer tests + benchmark",
+            "1. (Optioneel) verfijn autoresearch.md — metric, scope en constraints",
+            "2. Controleer autoresearch.sh en pas benchmark/checks aan indien nodig",
             "3. /autoresearch start [runs] [min] — begin assisted loop",
             "   of: /autoresearch ralph [runs] [min] — begin Ralph mode",
-          ].join("\n"), "info");
+          ].filter(Boolean).join("\n"), "info");
           return;
         }
 
@@ -220,6 +238,19 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
   const benchmark = path.join(cwd, "autoresearch.sh");
   if (!fs.existsSync(benchmark)) return { state: readState(cwd), blockMsg: "autoresearch.sh niet gevonden. Maak het aan voordat je start." };
   if (fs.existsSync(p.sentinel)) return { state: readState(cwd), blockMsg: "Loop is gepauzeerd. /autoresearch resume om door te gaan." };
+
+  const isolation = gitIsolationStatus(cwd);
+  if (!isolation.inGitRepo) {
+    return { state: readState(cwd), blockMsg: "Start geblokkeerd — geen git repository gevonden. Autoresearch vereist een aparte git branch/worktree." };
+  }
+  if (!isolation.isolated) {
+    const contextTitle = fs.readFileSync(p.context, "utf-8").split("\n").find(line => line.startsWith("# "))?.replace(/^#\s*Autoresearch:\s*/i, "").trim();
+    const branchResult = ensureAutoresearchBranch(cwd, contextTitle);
+    if (!branchResult.ok) {
+      const branch = isolation.branch || "(detached)";
+      return { state: readState(cwd), blockMsg: `Start geblokkeerd — niet in geïsoleerde autoresearch branch/worktree. Huidige branch: ${branch}. ${branchResult.reason}` };
+    }
+  }
 
   const contract = readContract(cwd);
   const contractErrors = validateContractForStart(contract);

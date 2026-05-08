@@ -18,6 +18,9 @@ experiments/
 *.tmp
 *.bak
 
+# Prevent accidental nested-repo commits
+/autoresearch-pi/
+
 # Local environment and agent artifacts
 .env
 .env.*

@@ -3,6 +3,13 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { paths } from "./state.js";
 
+export interface GitIsolationStatus {
+  inGitRepo: boolean;
+  branch: string | null;
+  isWorktree: boolean;
+  isolated: boolean;
+}
+
 export interface AutoresearchContract {
   filesInScope: string[];
   offLimits: string[];
@@ -248,6 +255,50 @@ export function dirtyUserPaths(cwd: string): string[] {
   const paths = dirtyGitPaths(cwd);
   if (paths === null) return [];
   return paths.filter(relPath => !isRuntimeArtifact(relPath));
+}
+
+function safeGit(cwd: string, command: string): string | null {
+  try {
+    return execSync(command, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+  } catch {
+    return null;
+  }
+}
+
+export function gitIsolationStatus(cwd: string): GitIsolationStatus {
+  const inGitRepo = safeGit(cwd, "git rev-parse --is-inside-work-tree") === "true";
+  if (!inGitRepo) return { inGitRepo: false, branch: null, isWorktree: false, isolated: false };
+
+  const branch = safeGit(cwd, "git branch --show-current") || null;
+  const gitDir = safeGit(cwd, "git rev-parse --git-dir") || "";
+  const isWorktree = gitDir.includes("/worktrees/") || gitDir.includes("\\worktrees\\");
+  const isAutoresearchBranch = typeof branch === "string" && /^autoresearch\//.test(branch);
+
+  return {
+    inGitRepo: true,
+    branch,
+    isWorktree,
+    isolated: Boolean(isAutoresearchBranch || isWorktree),
+  };
+}
+
+export function ensureAutoresearchBranch(cwd: string, preferredName?: string): { ok: boolean; branch?: string; reason?: string } {
+  const status = gitIsolationStatus(cwd);
+  if (!status.inGitRepo) return { ok: false, reason: "geen git repository gedetecteerd" };
+  if (status.isolated) return { ok: true, branch: status.branch ?? undefined };
+
+  const slug = (preferredName ?? "session").toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "").slice(0, 40) || "session";
+  const branch = `autoresearch/${slug}`;
+
+  try {
+    execSync(`git switch -c ${JSON.stringify(branch)}`, { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    return { ok: true, branch };
+  } catch {
+    return {
+      ok: false,
+      reason: `kan niet automatisch isoleren. Maak eerst een aparte branch/worktree, bv: git switch -c ${branch}`,
+    };
+  }
 }
 
 function countFileLines(filePath: string): number {
