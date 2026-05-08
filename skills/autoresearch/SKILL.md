@@ -11,7 +11,7 @@ Use this skill to run controlled optimization research in a repository. The core
 
 When installed as a Pi package, the plugin provides:
 
-- **Commands**: `/autoresearch status|new|start|ralph|pause|resume|dashboard|validate`
+- **Commands**: `/autoresearch status`, `/autoresearch new`, `/autoresearch start`, `/autoresearch ralph`, `/autoresearch pause`, `/autoresearch resume`, `/autoresearch dashboard`, `/autoresearch validate`
 - **Tools**: `autoresearch_state`, `autoresearch_metric`, `autoresearch_decide`, `autoresearch_dashboard`
 - **Hooks**: context injection on `before_agent_start`, safety guards on `tool_call`, autonomous continuation on `agent_end`, state persistence on `session_before_compact`
 

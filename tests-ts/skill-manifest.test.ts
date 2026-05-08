@@ -51,7 +51,7 @@ function parseSimpleYaml(yaml: string): Record<string, Record<string, string>> {
   const result: Record<string, Record<string, string>> = {};
   let currentSection: string | null = null;
   for (const raw of yaml.split(/\r?\n/)) {
-    const line = raw.replace(/#.*$/, ""); // strip inline comments
+    const line = raw;
     if (!line.trim()) continue;
     const topMatch = line.match(/^(\w[\w-]*):\s*$/);
     if (topMatch) {
@@ -61,7 +61,12 @@ function parseSimpleYaml(yaml: string): Record<string, Record<string, string>> {
     }
     const nestedMatch = line.match(/^\s{2,}(\w[\w_-]*):\s*(.+)$/);
     if (nestedMatch && currentSection) {
-      result[currentSection][nestedMatch[1]] = nestedMatch[2].trim().replace(/^["']|["']$/g, "");
+      let value = nestedMatch[2].trim();
+      // Remove surrounding quotes if present
+      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+        value = value.slice(1, -1);
+      }
+      result[currentSection][nestedMatch[1]] = value;
     }
   }
   return result;
