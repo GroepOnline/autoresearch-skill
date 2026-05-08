@@ -55,6 +55,7 @@
     "typecheck": "tsc --noEmit",
     "test": "node scripts/run-python-tests.mjs",
     "test:ts": "node scripts/run-ts-tests.mjs",
+    "test:e2e": "bash scripts/e2e-automated-test.sh",
     "validate": "node scripts/validate.mjs",
     "lint": "eslint extensions/**/*.ts --max-warnings 0",
     "lint:fix": "eslint extensions/**/*.ts --fix",
