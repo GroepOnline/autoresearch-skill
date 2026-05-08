@@ -61,6 +61,24 @@ test("start contract validation rejects empty scope and placeholders", () => {
   assert.ok(errors.some(error => error.includes("Files in Scope")));
 });
 
+test("contract validation rejects path traversal and invalid syntax", () => {
+  const contract = parseContract(`
+# Autoresearch
+
+## Files in Scope
+- src/parser.ts
+- ../../../etc/passwd
+
+## Off Limits
+- .env
+- test|file
+`);
+
+  const errors = validateContractForStart(contract);
+  assert.ok(errors.some(error => error.includes("path traversal")));
+  assert.ok(errors.some(error => error.includes("invalid characters")));
+});
+
 test("evaluateToolCall blocks protected and off-limits paths", () => {
   const cwd = tempProject();
   const contract = { filesInScope: ["src/parser.ts"], offLimits: ["src/secret.ts"] };
@@ -125,6 +143,32 @@ test("evaluateBashCommand blocks destructive git and shell commands", () => {
   assert.equal(evaluateBashCommand("printf SECRET > .env").block, true);
   assert.equal(evaluateBashCommand("cat key > deploy.pem").block, true);
   assert.equal(evaluateBashCommand("npm test").block, false);
+  assert.equal(evaluateBashCommand("python3 -m pytest").block, false);
+});
+
+test("bash command whitelist allows approved commands", () => {
+  // Allowed commands
+  assert.equal(evaluateBashCommand("npm run test").block, false);
+  assert.equal(evaluateBashCommand("python scripts/benchmark.py").block, false);
+  assert.equal(evaluateBashCommand("pytest tests/").block, false);
+  assert.equal(evaluateBashCommand("node scripts/validate.mjs").block, false);
+  assert.equal(evaluateBashCommand("git status").block, false);
+  assert.equal(evaluateBashCommand("git log --oneline -5").block, false);
+  assert.equal(evaluateBashCommand("cat README.md").block, false);
+  assert.equal(evaluateBashCommand("pwd").block, false);
+});
+
+test("bash command whitelist blocks unknown commands", () => {
+  assert.equal(evaluateBashCommand("rm test.txt").block, true);
+  assert.equal(evaluateBashCommand("chmod 755 script.sh").block, true);
+  assert.equal(evaluateBashCommand("mv file.txt newfile.txt").block, true);
+  assert.equal(evaluateBashCommand("custom-tool --run").block, true);
+});
+
+test("bash blocks dangerous patterns even with allowed commands", () => {
+  assert.equal(evaluateBashCommand("npm test $(whoami)").block, true);
+  assert.equal(evaluateBashCommand("git status `cat /etc/passwd`").block, true);
+  assert.equal(evaluateBashCommand("python -c 'import os; os.system(\"rm -rf /\")'").block, true);
 });
 
 test("bash guard blocks off-limits path references", () => {

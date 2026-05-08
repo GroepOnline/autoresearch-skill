@@ -57,5 +57,8 @@
     "@mariozechner/pi-coding-agent": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "zod": "^4.4.3"
   }
 }

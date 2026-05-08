@@ -1,4 +1,4 @@
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { paths } from "./state.js";
@@ -14,6 +14,7 @@ export interface AutoresearchContract {
   filesInScope: string[];
   offLimits: string[];
   placeholders?: string[];
+  errors?: string[];
 }
 
 export interface PolicyDecision {
@@ -54,15 +55,50 @@ const RUNTIME_ARTIFACT_PATTERNS = [
   /^\.autoresearch(?:\/|$)/,
 ];
 
-const DESTRUCTIVE_COMMAND_PATTERNS = [
+// Whitelist of allowed bash commands with their allowed argument patterns
+// Each entry: [command, allowedArgPattern]
+const ALLOWED_COMMAND_WHITELIST: Array<[string, RegExp | null]> = [
+  // Build & test tools
+  ["npm", /^(run|test|run\s+\S+|install|ci|build|start|lint|format|typecheck)(?:\s|$)/],
+  ["yarn", /^(install|add|remove|run|test|build|start|lint|format)(?:\s|$)/],
+  ["pnpm", /^(install|add|remove|run|test|build|start|lint|format)(?:\s|$)/],
+  ["python", /^(-m\s+\S+|--version|--help|\S+\.py\b)(?:\s|$)/],
+  ["python3", /^(-m\s+\S+|--version|--help|\S+\.py\b)(?:\s|$)/],
+  ["pytest", /^(-v|--verbose|-x|--tb=\S+|-k\s+\S+|\S+\.py\b|tests\/)(?:\s|$)/],
+  ["node", /^(--version|--help|scripts\/\S+\.mjs|\S+\.mjs|\S+\.js|-e\s+)/],
+  ["npx", /^(\S+)(?:\s|$)/],
+  
+  // Git read-only operations
+  ["git", /^(status|log|diff|show|branch|rev-parse|ls-files|ls-tree)(?:\s|$)/],
+  
+  // File operations (read-only)
+  ["cat", /^(\S+)$/],
+  ["head", /^(-n\s+\d+|\S+)$/],
+  ["tail", /^(-n\s+\d+|\S+)$/],
+  ["ls", /^(-la|-la\s+\S+|\S+)$/],
+  ["find", /^(\S+)(?:\s|$)/],
+  ["wc", /^(-l|\S+)(?:\s|$)/],
+  ["grep", /^(-\w+|\S+)(?:\s|$)/],
+  
+  // Environment info
+  ["echo", /^(.*)$/],
+  ["pwd", null],
+  ["which", /^(\S+)$/],
+  ["date", null],
+  ["uname", /^(-a)?$/],
+  ["env", null],
+];
+
+// Dangerous patterns that are always blocked (defense in depth)
+const ALWAYS_BLOCKED_PATTERNS = [
   /\brm\s+-[^\n;|&]*r[^\n;|&]*f\s+(?:\/|~|\$HOME)(?:\s|$)/,
-  /\bgit\s+reset\s+--hard\b/,
-  /\bgit\s+clean\s+-[^\n;|&]*[fd][^\n;|&]*\b/,
-  /\bgit\s+checkout\s+--\s+\.\b/,
-  /\bgit\s+restore\s+[^\n;|&]*(?:--staged\s+)?--worktree\s+\.\b/,
   /\bsudo\b/,
   /\bchmod\s+-R\s+777\b/,
   /(?:curl|wget)[^\n|;&]*\|\s*(?:sh|bash)\b/,
+  /\b(eval|exec)\s+\(/,
+  /\$\([^)]+\)/,  // Command substitution $()
+  /`[^`]+`/,       // Backtick command substitution
+  /\$\{[^}]+\}/,   // Variable expansion that could be dangerous
 ];
 
 const SHELL_PROTECTED_PATH_PATTERNS = [
@@ -112,25 +148,63 @@ function cleanSectionLine(line: string): string {
   return line.replace(/^\s*[-*]\s*/, "").replace(/^`|`$/g, "").trim();
 }
 
-function extractSection(markdown: string, heading: string): { values: string[]; placeholders: string[] } {
+// Validate that a path is syntactically safe (no path traversal, no absolute paths outside cwd)
+function validatePathSyntax(pathStr: string): { valid: boolean; error?: string } {
+  // Block path traversal attempts
+  if (pathStr.includes("..")) {
+    return { valid: false, error: `path traversal not allowed: ${pathStr}` };
+  }
+  
+  // Block null bytes
+  if (pathStr.includes("\0")) {
+    return { valid: false, error: `null bytes not allowed in path: ${pathStr}` };
+  }
+  
+  // Block extremely long paths (potential DoS)
+  if (pathStr.length > 500) {
+    return { valid: false, error: `path too long (max 500 chars): ${pathStr.length} chars` };
+  }
+  
+  // Block dangerous characters for Windows
+  if (/[<>:"|?*]/.test(pathStr)) {
+    return { valid: false, error: `invalid characters in path: ${pathStr}` };
+  }
+  
+  return { valid: true };
+}
+
+function extractSection(markdown: string, heading: string): { values: string[]; placeholders: string[]; errors: string[] } {
   const lines = markdown.split("\n");
   const start = lines.findIndex(line => line.trim().toLowerCase() === `## ${heading}`.toLowerCase());
-  if (start === -1) return { values: [], placeholders: [`missing section: ${heading}`] };
+  if (start === -1) return { values: [], placeholders: [`missing section: ${heading}`], errors: [] };
 
   const values: string[] = [];
   const placeholders: string[] = [];
+  const errors: string[] = [];
+  
   for (const line of lines.slice(start + 1)) {
     if (/^##\s+/.test(line)) break;
     const cleaned = cleanSectionLine(line);
     if (!cleaned) continue;
+    
     if (cleaned.includes("<") || cleaned.includes(">")) {
       placeholders.push(`${heading}: ${cleaned}`);
       continue;
     }
+    
     if (/^(none|n\/a|no restrictions|geen|geen beperkingen)$/i.test(cleaned)) continue;
+    
+    // Validate path syntax
+    const validation = validatePathSyntax(cleaned);
+    if (!validation.valid) {
+      errors.push(`${heading}: ${validation.error}`);
+      continue;
+    }
+    
     values.push(cleaned);
   }
-  return { values, placeholders };
+  
+  return { values, placeholders, errors };
 }
 
 export function parseContract(markdown: string): AutoresearchContract {
@@ -140,12 +214,13 @@ export function parseContract(markdown: string): AutoresearchContract {
     filesInScope: scope.values,
     offLimits: offLimits.values,
     placeholders: [...scope.placeholders, ...offLimits.placeholders],
+    errors: [...scope.errors, ...offLimits.errors],
   };
 }
 
 export function readContract(cwd: string): AutoresearchContract {
   const context = paths(cwd).context;
-  if (!fs.existsSync(context)) return { filesInScope: [], offLimits: [], placeholders: ["missing autoresearch.md"] };
+  if (!fs.existsSync(context)) return { filesInScope: [], offLimits: [], placeholders: ["missing autoresearch.md"], errors: [] };
   return parseContract(fs.readFileSync(context, "utf-8"));
 }
 
@@ -153,6 +228,9 @@ export function validateContractForStart(contract: AutoresearchContract): string
   const errors: string[] = [];
   if (contract.placeholders && contract.placeholders.length > 0) {
     errors.push(`autoresearch.md bevat nog placeholders: ${contract.placeholders.join("; ")}`);
+  }
+  if (contract.errors && contract.errors.length > 0) {
+    errors.push(...contract.errors);
   }
   if (contract.filesInScope.length === 0) {
     errors.push("Files in Scope is leeg. Vul minimaal een bestand of map in voordat /autoresearch start.");
@@ -186,16 +264,22 @@ function evaluatePathMutation(cwd: string, rawPath: unknown, contract: Autoresea
 
 export function evaluateBashCommand(command: string, _cwd?: string, contract?: AutoresearchContract): PolicyDecision {
   const compact = command.replace(/\\\n/g, "\n");
-  for (const pattern of DESTRUCTIVE_COMMAND_PATTERNS) {
+  
+  // Check always-blocked patterns first (defense in depth)
+  for (const pattern of ALWAYS_BLOCKED_PATTERNS) {
     if (pattern.test(compact)) {
-      return { block: true, reason: `Autoresearch policy: destructive command blocked: ${command}` };
+      return { block: true, reason: `Autoresearch policy: dangerous pattern detected in command: ${command}` };
     }
   }
+  
+  // Check protected paths in command
   for (const pattern of SHELL_PROTECTED_PATH_PATTERNS) {
     if (pattern.test(compact.replaceAll("\\", "/"))) {
       return { block: true, reason: `Autoresearch policy: protected path referenced by shell command: ${command}` };
     }
   }
+  
+  // Check off-limits paths
   if (contract) {
     for (const relPath of contract.offLimits) {
       if (commandMentionsPath(compact, relPath)) {
@@ -203,6 +287,27 @@ export function evaluateBashCommand(command: string, _cwd?: string, contract?: A
       }
     }
   }
+  
+  // Extract command name and arguments
+  const trimmed = compact.trim();
+  const firstSpace = trimmed.indexOf(" ");
+  const cmdName = firstSpace === -1 ? trimmed : trimmed.slice(0, firstSpace);
+  const cmdArgs = firstSpace === -1 ? "" : trimmed.slice(firstSpace + 1);
+  
+  // Check against whitelist
+  const whitelistEntry = ALLOWED_COMMAND_WHITELIST.find(([name]) => name === cmdName);
+  if (!whitelistEntry) {
+    return { block: true, reason: `Autoresearch policy: command not in whitelist: ${cmdName}` };
+  }
+  
+  // Validate arguments against pattern
+  const [, argPattern] = whitelistEntry;
+  if (argPattern && cmdArgs.length > 0) {
+    if (!argPattern.test(cmdArgs)) {
+      return { block: true, reason: `Autoresearch policy: invalid arguments for ${cmdName}: ${cmdArgs}` };
+    }
+  }
+  
   return { block: false };
 }
 
@@ -277,8 +382,9 @@ function parseGitStatusPorcelain(status: string): string[] {
 
 export function dirtyGitPaths(cwd: string): string[] | null {
   try {
-    const status = execSync("git status --porcelain", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-    return parseGitStatusPorcelain(status);
+    const result = spawnSync("git", ["status", "--porcelain"], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    if (result.status !== 0) return null;
+    return parseGitStatusPorcelain(result.stdout);
   } catch {
     return null; // not a git repo, or git unavailable
   }
@@ -290,20 +396,21 @@ export function dirtyUserPaths(cwd: string): string[] {
   return paths.filter(relPath => !isRuntimeArtifact(relPath));
 }
 
-function safeGit(cwd: string, command: string): string | null {
+function safeGit(cwd: string, args: string[]): string | null {
   try {
-    return execSync(command, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
+    const result = spawnSync("git", args, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    return result.status === 0 ? result.stdout.trim() : null;
   } catch {
     return null;
   }
 }
 
 export function gitIsolationStatus(cwd: string): GitIsolationStatus {
-  const inGitRepo = safeGit(cwd, "git rev-parse --is-inside-work-tree") === "true";
+  const inGitRepo = safeGit(cwd, ["rev-parse", "--is-inside-work-tree"]) === "true";
   if (!inGitRepo) return { inGitRepo: false, branch: null, isWorktree: false, isolated: false };
 
-  const branch = safeGit(cwd, "git branch --show-current") || null;
-  const gitDir = safeGit(cwd, "git rev-parse --git-dir") || "";
+  const branch = safeGit(cwd, ["branch", "--show-current"]) || null;
+  const gitDir = safeGit(cwd, ["rev-parse", "--git-dir"]) || "";
   const isWorktree = gitDir.includes("/worktrees/") || gitDir.includes("\\worktrees\\");
   const isAutoresearchBranch = typeof branch === "string" && /^autoresearch\//.test(branch);
 
@@ -324,8 +431,14 @@ export function ensureAutoresearchBranch(cwd: string, preferredName?: string): {
   const branch = `autoresearch/${slug}`;
 
   try {
-    execSync(`git switch -c ${JSON.stringify(branch)}`, { cwd, stdio: ["pipe", "pipe", "pipe"] });
-    return { ok: true, branch };
+    const result = spawnSync("git", ["switch", "-c", branch], { cwd, stdio: ["pipe", "pipe", "pipe"] });
+    if (result.status === 0) {
+      return { ok: true, branch };
+    }
+    return {
+      ok: false,
+      reason: `kan niet automatisch isoleren. Maak eerst een aparte branch/worktree, bv: git switch -c ${branch}`,
+    };
   } catch {
     return {
       ok: false,
@@ -354,10 +467,11 @@ function countFileLines(filePath: string): number {
 
 function countChangedLines(cwd: string, relPath: string): number {
   let total = 0;
-  for (const command of ["git diff --numstat --", "git diff --cached --numstat --"]) {
+  for (const args of [["diff", "--numstat", "--", relPath], ["diff", "--cached", "--numstat", "--", relPath]]) {
     try {
-      const output = execSync(`${command} ${JSON.stringify(relPath)}`, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
-      for (const line of output.split("\n")) {
+      const result = spawnSync("git", args, { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+      if (result.status !== 0) continue;
+      for (const line of result.stdout.split("\n")) {
         const [added, deleted] = line.trim().split(/\s+/);
         const addCount = Number.parseInt(added, 10);
         const delCount = Number.parseInt(deleted, 10);

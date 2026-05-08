@@ -1,5 +1,6 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
-import { execSync } from "node:child_process";
+import { spawnSync } from "node:child_process";
+import { z } from "zod";
 import { delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { dashboardRows } from "./ui.js";
 
@@ -39,6 +40,26 @@ function cv(values: number[]): number {
   const m = Math.abs(values.reduce((a, b) => a + b, 0) / values.length);
   return m === 0 ? 0 : (stdev(values) / m) * 100;
 }
+
+// Zod schemas for tool input validation
+const MetricInputSchema = z.object({
+  output: z.string().min(1, "output must be a non-empty string"),
+  primary_metric: z.string().optional(),
+});
+
+const DecideInputSchema = z.object({
+  candidate: z.number().finite("candidate must be a finite number"),
+  best: z.number().finite("best must be a finite number").nullable().optional(),
+  direction: z.enum(["lower", "higher"]),
+  min_effect_size_pct: z.number().min(0).max(100).optional(),
+  noise_floor_pct: z.number().min(0).max(100).optional(),
+  tests_passed: z.boolean().optional(),
+  noisy: z.boolean().optional(),
+});
+
+const DashboardInputSchema = z.object({
+  write_file: z.boolean().optional(),
+});
 
 
 export interface MetricDecisionInput {
@@ -105,7 +126,8 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
 
 function captureCommit(cwd: string): string | null {
   try {
-    return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim() || null;
+    const result = spawnSync("git", ["rev-parse", "HEAD"], { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] });
+    return result.status === 0 ? result.stdout.trim() || null : null;
   } catch {
     return null;
   }
@@ -187,12 +209,13 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
-      const metrics = parseMetricLines(params.output);
+      const validated = MetricInputSchema.parse(params);
+      const metrics = parseMetricLines(validated.output);
       if (metrics.length === 0) {
         throw new Error("No METRIC lines found in output. Benchmark must print at least one: METRIC name=value direction=lower|higher");
       }
 
-      const primaryName = params.primary_metric ?? metrics[0].name;
+      const primaryName = validated.primary_metric ?? metrics[0].name;
       const primaryValues = metrics.filter(m => m.name === primaryName).map(m => m.value);
       if (primaryValues.length === 0) throw new Error(`Primary metric '${primaryName}' not found in output.`);
 
@@ -269,7 +292,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      const decision = decideMetric(params as MetricDecisionInput);
+      const validated = DecideInputSchema.parse(params);
+      const decision = decideMetric(validated);
       const label = decision.action.toUpperCase();
       const text = `${label} — ${decision.reason}`;
       return { content: [{ type: "text", text }], details: decision };
@@ -294,6 +318,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      const validated = DashboardInputSchema.parse(params);
       const state = readState(ctx.cwd);
 
       if (state.parseErrors.length > 0) {
@@ -304,7 +329,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       const rows = dashboardRows(state);
       const markdown = rows.join("\n");
 
-      if (params.write_file) {
+      if (validated.write_file) {
         const { writeFileSync } = await import("node:fs");
         writeFileSync(paths(ctx.cwd).dashboard, markdown + "\n", "utf-8");
       }
@@ -316,7 +341,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           bestMetric: state.bestMetric,
           bestRun: state.bestRun,
           baselineMetric: state.baselineMetric,
-          wrote: params.write_file ?? false,
+          wrote: validated.write_file ?? false,
         },
       };
     },
