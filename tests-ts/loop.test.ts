@@ -48,7 +48,11 @@ test("loop continues when budget remains and state is healthy", () => {
 });
 
 test("loop stops when run budget exhausted", () => {
-  const cont = evaluateContinuation(baseState({ runCount: 5 }), baseLoop({ maxRuns: 5 }), Date.now());
+  const cont = evaluateContinuation(
+    baseState({ runCount: 5 }),
+    baseLoop({ maxRuns: 5 }),
+    Date.now()
+  );
   assert.equal(cont.shouldContinue, false);
   assert.match(cont.stopReason!, /run budget/);
 });
@@ -70,7 +74,11 @@ test("loop stops when paused", () => {
 });
 
 test("loop stops when JSONL has parse errors", () => {
-  const cont = evaluateContinuation(baseState({ parseErrors: ["line 1: invalid JSON"] }), baseLoop(), Date.now());
+  const cont = evaluateContinuation(
+    baseState({ parseErrors: ["line 1: invalid JSON"] }),
+    baseLoop(),
+    Date.now()
+  );
   assert.equal(cont.shouldContinue, false);
   assert.match(cont.stopReason!, /JSONL/);
 });
@@ -78,7 +86,9 @@ test("loop stops when JSONL has parse errors", () => {
 test("loop stops on explicit stop decision", () => {
   const state = baseState({
     runCount: 3,
-    decisions: [{ type: "decision", run: 3, action: "stop", reason: "noise too high", timestamp: "t" }],
+    decisions: [
+      { type: "decision", run: 3, action: "stop", reason: "noise too high", timestamp: "t" },
+    ],
   });
   const cont = evaluateContinuation(state, baseLoop(), Date.now());
   assert.equal(cont.shouldContinue, false);

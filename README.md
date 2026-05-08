@@ -68,7 +68,7 @@ Commands:
 
 ```text
 /autoresearch status
-/autoresearch new <goal>
+/autoresearch new <goal>   # auto-switches to an isolated autoresearch/* branch when possible
 /autoresearch start [max_runs] [max_minutes]
 /autoresearch ralph [max_runs] [max_minutes]
 /autoresearch pause
@@ -103,6 +103,7 @@ The loop automatically stops on:
 - Pause sentinel (`.autoresearch-off`)
 - Corrupt JSONL state
 - Dirty git working tree at loop start, except autoresearch runtime files created by `/autoresearch new`
+- Not in an isolated git context (`autoresearch/*` branch or a git worktree)
 - Correctness test failures
 - Benchmark noise exceeding configured threshold
 
@@ -117,15 +118,15 @@ The loop automatically stops on:
 - **Context injection** — Auto-generated "Recently Tried" table + stats in `before_agent_start`
 - **Deduplication hints** — Last 5 unique descriptions shown to prevent repeated hypotheses
 - **Session persistence** — Consecutive discard and plateau counters survive session restarts via JSONL re-derivation
-- **Strict start gate** — `/autoresearch start` refuses unresolved placeholders, empty scope, missing config, unconfigured benchmarks, and non-runtime dirty files
+- **Strict start gate** — `/autoresearch start` refuses unresolved placeholders, empty scope, missing config, unconfigured benchmarks, non-runtime dirty files, and non-isolated git contexts
 
 ## Helper scripts
 
 ```bash
-python3 scripts/autoresearch.py parse-metrics benchmark.out
-python3 scripts/autoresearch.py validate autoresearch.jsonl
-python3 scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
-python3 scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
+python scripts/autoresearch.py parse-metrics benchmark.out
+python scripts/autoresearch.py validate autoresearch.jsonl
+python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
+python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```
 
 ## Validation

@@ -3,7 +3,14 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage } from "./loop.js";
-import { dirtyUserPaths, readContract, setMaxDiffLines, validateContractForStart } from "./policy.js";
+import {
+  dirtyUserPaths,
+  ensureAutoresearchBranch,
+  gitIsolationStatus,
+  readContract,
+  setMaxDiffLines,
+  validateContractForStart,
+} from "./policy.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import type { ArConfig, ArState } from "./types.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
@@ -13,13 +20,17 @@ export interface StartPrereqResult {
   blockMsg?: string;
 }
 
-export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: LoopState | null) => void): void {
+export function registerAutoresearchCommand(
+  pi: ExtensionAPI,
+  storeLoop: (s: LoopState | null) => void
+): void {
   pi.registerCommand("autoresearch", {
-    description: "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate",
+    description:
+      "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate",
 
     getArgumentCompletions: (prefix: string) => {
       const subs = ["status", "new", "start", "ralph", "pause", "resume", "dashboard", "validate"];
-      return subs.filter(s => s.startsWith(prefix)).map(s => ({ value: s, label: s }));
+      return subs.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
     },
 
     handler: async (args: string, ctx) => {
@@ -38,7 +49,10 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           fs.writeFileSync(p.sentinel, `paused: ${new Date().toISOString()}\n`);
           const state = readState(ctx.cwd);
           ctx.ui.setStatus("autoresearch", footerText(state));
-          ctx.ui.notify("⏸️  Autoresearch gepauzeerd. /autoresearch resume om door te gaan.", "info");
+          ctx.ui.notify(
+            "⏸️  Autoresearch gepauzeerd. /autoresearch resume om door te gaan.",
+            "info"
+          );
           return;
         }
 
@@ -53,7 +67,13 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
         case "dashboard": {
           const state = readState(ctx.cwd);
           if (state.parseErrors.length > 0) {
-            ctx.ui.notify(["Dashboard geblokkeerd; JSONL fouten:", ...state.parseErrors.map(e => `- ${e}`)].join("\n"), "error");
+            ctx.ui.notify(
+              [
+                "Dashboard geblokkeerd; JSONL fouten:",
+                ...state.parseErrors.map((e) => `- ${e}`),
+              ].join("\n"),
+              "error"
+            );
             return;
           }
           if (!state.config) {
@@ -68,11 +88,20 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
         case "validate": {
           const state = readState(ctx.cwd);
           if (state.parseErrors.length > 0) {
-            ctx.ui.notify(["❌ autoresearch.jsonl bevat fouten:", ...state.parseErrors.map(e => `- ${e}`)].join("\n"), "error");
+            ctx.ui.notify(
+              [
+                "❌ autoresearch.jsonl bevat fouten:",
+                ...state.parseErrors.map((e) => `- ${e}`),
+              ].join("\n"),
+              "error"
+            );
           } else if (!state.config) {
             ctx.ui.notify("Geen autoresearch.jsonl gevonden.", "warning");
           } else {
-            ctx.ui.notify(`✅ autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`, "info");
+            ctx.ui.notify(
+              `✅ autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`,
+              "info"
+            );
           }
           return;
         }
@@ -84,80 +113,124 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
             return;
           }
           if (fs.existsSync(p.context)) {
-            const ok = await ctx.ui.confirm("Overschrijven?", `autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`);
+            const ok = await ctx.ui.confirm(
+              "Overschrijven?",
+              `autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`
+            );
             if (!ok) return;
           }
           fs.mkdirSync(path.join(ctx.cwd, "experiments"), { recursive: true });
-          fs.writeFileSync(p.context, [
-            `# Autoresearch: ${goal}`,
-            "",
-            "## Objective",
-            goal,
-            "",
-            "## Metrics",
-            "- **Primary**: <metric_name> (<unit>, lower/higher is better)",
-            "- **Secondary**: optional correctness, size, memory, or latency guardrails",
-            "",
-            "## How to Run",
-            "`./autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
-            "",
-            "## Files in Scope",
-            "- <Every file or directory the agent may change>",
-            "",
-            "## Off Limits",
-            "- <Files, APIs, or behaviors that must not change; use `none` if there are none>",
-            "",
-            "## Constraints",
-            "- Tests must pass before any keep decision.",
-            "- One hypothesis per run.",
-            "- Stop at configured budget, unsafe git state, corrupt state, or noisy benchmarks.",
-            "",
-            "## What's Been Tried",
-            "- (baseline not measured yet)",
-          ].join("\n"));
+
+          const isolation = ensureAutoresearchBranch(ctx.cwd, goal);
+          if (!isolation.ok) {
+            ctx.ui.notify(
+              `⚠️ Git-isolatie niet automatisch ingesteld: ${isolation.reason}`,
+              "warning"
+            );
+          }
+
+          fs.writeFileSync(
+            p.context,
+            [
+              `# Autoresearch: ${goal}`,
+              "",
+              "## Objective",
+              goal,
+              "",
+              "## Metrics",
+              "- **Primary**: run_seconds (s, lower is better)",
+              "- **Secondary**: correctness pass/fail guardrail",
+              "",
+              "## How to Run",
+              "`./autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
+              "",
+              "## Files in Scope",
+              "- .",
+              "",
+              "## Off Limits",
+              "- none",
+              "",
+              "## Constraints",
+              "- Tests must pass before any keep decision.",
+              "- One hypothesis per run.",
+              "- Stop at configured budget, unsafe git state, corrupt state, or noisy benchmarks.",
+              "",
+              "## What's Been Tried",
+              "- (baseline not measured yet)",
+            ].join("\n")
+          );
           const benchmark = path.join(ctx.cwd, "autoresearch.sh");
           if (!fs.existsSync(benchmark)) {
-            fs.writeFileSync(benchmark, [
-              "#!/usr/bin/env bash",
-              "set -euo pipefail",
-              "",
-              "# Run correctness checks and benchmark, then print METRIC lines:",
-              "#   METRIC latency_ms=12.4 direction=lower",
-              "echo 'autoresearch.sh is not configured yet — edit it before starting.' >&2",
-              "exit 2",
-            ].join("\n"), { mode: 0o755 });
+            fs.writeFileSync(
+              benchmark,
+              [
+                "#!/usr/bin/env bash",
+                "set -euo pipefail",
+                "",
+                'start_ms=$(node -e "process.stdout.write(String(Date.now()))")',
+                "",
+                "if [ -f package.json ] && command -v npm >/dev/null 2>&1; then",
+                "  npm run validate",
+                "elif [ -f scripts/validate.sh ] && command -v bash >/dev/null 2>&1; then",
+                "  bash scripts/validate.sh",
+                "elif [ -d tests ] && command -v python3 >/dev/null 2>&1; then",
+                "  python3 -m unittest discover -s tests -p 'test_*.py'",
+                "elif [ -d tests ] && command -v python >/dev/null 2>&1; then",
+                "  python -m unittest discover -s tests -p 'test_*.py'",
+                "fi",
+                "",
+                'end_ms=$(node -e "process.stdout.write(String(Date.now()))")',
+                'run_seconds=$(node -e "const s=Number(process.argv[1]); const e=Number(process.argv[2]); process.stdout.write(((e-s)/1000).toFixed(6));" "$start_ms" "$end_ms")',
+                'echo "METRIC run_seconds=${run_seconds} direction=lower"',
+              ].join("\n"),
+              { mode: 0o755 }
+            );
           }
           if (!fs.existsSync(p.worklog)) {
-            fs.writeFileSync(p.worklog, [
-              `# Autoresearch Worklog: ${goal}`,
-              `Started: ${new Date().toISOString().slice(0, 16)}`,
-              "",
-              "## Key Insights",
-              "- (record lessons after each experiment)",
-              "",
-              "## Next Ideas",
-              "- (add candidate hypotheses here)",
-              "",
-              "---",
-            ].join("\n"));
+            fs.writeFileSync(
+              p.worklog,
+              [
+                `# Autoresearch Worklog: ${goal}`,
+                `Started: ${new Date().toISOString().slice(0, 16)}`,
+                "",
+                "## Key Insights",
+                "- (record lessons after each experiment)",
+                "",
+                "## Next Ideas",
+                "- (add candidate hypotheses here)",
+                "",
+                "---",
+              ].join("\n")
+            );
           }
           const state = readState(ctx.cwd);
           ctx.ui.setStatus("autoresearch", footerText(state));
-          ctx.ui.notify([
-            `✅ Autoresearch sessie '${goal}' aangemaakt!`,
-            "",
-            "Volgende stappen:",
-            "1. Bewerk autoresearch.md — metrics, scope, constraints; verwijder alle <placeholders>",
-            "2. Bewerk autoresearch.sh — implementeer tests + benchmark",
-            "3. /autoresearch start [runs] [min] — begin assisted loop",
-            "   of: /autoresearch ralph [runs] [min] — begin Ralph mode",
-          ].join("\n"), "info");
+          ctx.ui.notify(
+            [
+              `✅ Autoresearch sessie '${goal}' aangemaakt!`,
+              isolation.ok && isolation.branch
+                ? `🪵 Geïsoleerde branch actief: ${isolation.branch}`
+                : "",
+              "",
+              "Volgende stappen:",
+              "1. (Optioneel) verfijn autoresearch.md — metric, scope en constraints",
+              "2. Controleer autoresearch.sh en pas benchmark/checks aan indien nodig",
+              "3. /autoresearch start [runs] [min] — begin assisted loop",
+              "   of: /autoresearch ralph [runs] [min] — begin Ralph mode",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            "info"
+          );
           return;
         }
 
         case "start": {
           const prereq = ensureStartPrereqs(ctx.cwd, p);
-          if (prereq.blockMsg) { ctx.ui.notify(prereq.blockMsg, "error"); return; }
+          if (prereq.blockMsg) {
+            ctx.ui.notify(prereq.blockMsg, "error");
+            return;
+          }
           const state = prereq.state;
           const budgets = parseStartBudgets(rest);
           const loop: LoopState = {
@@ -175,14 +248,34 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
           setMaxDiffLines(50);
-          ctx.ui.notify(`🚀 Autoresearch gestart (assisted) — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min.`, "info");
-          pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, elapsedMinutes: 0, remainingMinutes: budgets.maxMinutes, shouldContinue: true }, state), { deliverAs: "followUp" });
+          ctx.ui.notify(
+            `🚀 Autoresearch gestart (assisted) — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min.`,
+            "info"
+          );
+          pi.sendUserMessage(
+            buildContinuationMessage(
+              loop,
+              {
+                runNumber: state.runCount + 1,
+                runsUsed: 0,
+                remainingRuns: budgets.maxRuns,
+                elapsedMinutes: 0,
+                remainingMinutes: budgets.maxMinutes,
+                shouldContinue: true,
+              },
+              state
+            ),
+            { deliverAs: "followUp" }
+          );
           return;
         }
 
         case "ralph": {
           const prereq = ensureStartPrereqs(ctx.cwd, p);
-          if (prereq.blockMsg) { ctx.ui.notify(prereq.blockMsg, "error"); return; }
+          if (prereq.blockMsg) {
+            ctx.ui.notify(prereq.blockMsg, "error");
+            return;
+          }
           const state = prereq.state;
           const budgets = parseStartBudgets(rest.length ? rest : ["3", "20"]);
           const loop: LoopState = {
@@ -200,15 +293,32 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
           setMaxDiffLines(10);
-          ctx.ui.notify(`🐣 Ralph Wiggum mode — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min. Simpelste hypotheses eerst.`, "info");
-          pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, remainingMinutes: budgets.maxMinutes, elapsedMinutes: 0, shouldContinue: true }, state), { deliverAs: "followUp" });
+          ctx.ui.notify(
+            `🐣 Ralph Wiggum mode — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min. Simpelste hypotheses eerst.`,
+            "info"
+          );
+          pi.sendUserMessage(
+            buildContinuationMessage(
+              loop,
+              {
+                runNumber: state.runCount + 1,
+                runsUsed: 0,
+                remainingRuns: budgets.maxRuns,
+                remainingMinutes: budgets.maxMinutes,
+                elapsedMinutes: 0,
+                shouldContinue: true,
+              },
+              state
+            ),
+            { deliverAs: "followUp" }
+          );
           return;
         }
 
         default:
           ctx.ui.notify(
             `Onbekend subcommando: '${sub}'\n\nGebruik:\n  status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate`,
-            "warning",
+            "warning"
           );
       }
     },
@@ -216,36 +326,96 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
 }
 
 export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): StartPrereqResult {
-  if (!fs.existsSync(p.context)) return { state: readState(cwd), blockMsg: "autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>." };
+  if (!fs.existsSync(p.context))
+    return {
+      state: readState(cwd),
+      blockMsg: "autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
+    };
   const benchmark = path.join(cwd, "autoresearch.sh");
-  if (!fs.existsSync(benchmark)) return { state: readState(cwd), blockMsg: "autoresearch.sh niet gevonden. Maak het aan voordat je start." };
-  if (fs.existsSync(p.sentinel)) return { state: readState(cwd), blockMsg: "Loop is gepauzeerd. /autoresearch resume om door te gaan." };
+  if (!fs.existsSync(benchmark))
+    return {
+      state: readState(cwd),
+      blockMsg: "autoresearch.sh niet gevonden. Maak het aan voordat je start.",
+    };
+  if (fs.existsSync(p.sentinel))
+    return {
+      state: readState(cwd),
+      blockMsg: "Loop is gepauzeerd. /autoresearch resume om door te gaan.",
+    };
+
+  const isolation = gitIsolationStatus(cwd);
+  if (!isolation.inGitRepo) {
+    return {
+      state: readState(cwd),
+      blockMsg:
+        "Start geblokkeerd — geen git repository gevonden. Autoresearch vereist een aparte git branch/worktree.",
+    };
+  }
+  if (!isolation.isolated) {
+    const contextTitle = fs
+      .readFileSync(p.context, "utf-8")
+      .split("\n")
+      .find((line) => line.startsWith("# "))
+      ?.replace(/^#\s*Autoresearch:\s*/i, "")
+      .trim();
+    const branchResult = ensureAutoresearchBranch(cwd, contextTitle);
+    if (!branchResult.ok) {
+      const branch = isolation.branch || "(detached)";
+      return {
+        state: readState(cwd),
+        blockMsg: `Start geblokkeerd — niet in geïsoleerde autoresearch branch/worktree. Huidige branch: ${branch}. ${branchResult.reason}`,
+      };
+    }
+  }
 
   const contract = readContract(cwd);
   const contractErrors = validateContractForStart(contract);
-  if (contractErrors.length > 0) return { state: readState(cwd), blockMsg: `Start geblokkeerd — contract niet compleet:\n${contractErrors.map(e => `- ${e}`).join("\n")}` };
+  if (contractErrors.length > 0)
+    return {
+      state: readState(cwd),
+      blockMsg: `Start geblokkeerd — contract niet compleet:\n${contractErrors.map((e) => `- ${e}`).join("\n")}`,
+    };
 
   const benchmarkText = fs.readFileSync(benchmark, "utf-8");
   if (/not configured yet|<name>|<value>|TODO/i.test(benchmarkText)) {
-    return { state: readState(cwd), blockMsg: "Start geblokkeerd — autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst." };
+    return {
+      state: readState(cwd),
+      blockMsg:
+        "Start geblokkeerd — autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst.",
+    };
   }
 
   let state = readState(cwd);
-  if (state.parseErrors.length > 0) return { state, blockMsg: `Start geblokkeerd — JSONL fouten:\n${state.parseErrors.join("\n")}` };
+  if (state.parseErrors.length > 0)
+    return {
+      state,
+      blockMsg: `Start geblokkeerd — JSONL fouten:\n${state.parseErrors.join("\n")}`,
+    };
 
   if (!state.config) {
     const config = inferConfigFromContext(fs.readFileSync(p.context, "utf-8"));
     if (!config) {
-      return { state, blockMsg: "Start geblokkeerd — config ontbreekt en kon niet uit autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`." };
+      return {
+        state,
+        blockMsg:
+          "Start geblokkeerd — config ontbreekt en kon niet uit autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`.",
+      };
     }
     appendConfigIfMissing(p.jsonl, config);
     state = readState(cwd);
-    if (state.parseErrors.length > 0) return { state, blockMsg: `Start geblokkeerd — gegenereerde config is ongeldig:\n${state.parseErrors.join("\n")}` };
+    if (state.parseErrors.length > 0)
+      return {
+        state,
+        blockMsg: `Start geblokkeerd — gegenereerde config is ongeldig:\n${state.parseErrors.join("\n")}`,
+      };
   }
 
   const dirty = dirtyUserPaths(cwd);
   if (dirty.length > 0) {
-    return { state, blockMsg: `Git working tree bevat niet-autoresearch wijzigingen. Commit/stash deze eerst:\n${dirty.map(file => `- ${file}`).join("\n")}` };
+    return {
+      state,
+      blockMsg: `Git working tree bevat niet-autoresearch wijzigingen. Commit/stash deze eerst:\n${dirty.map((file) => `- ${file}`).join("\n")}`,
+    };
   }
 
   return { state };
@@ -263,15 +433,20 @@ function appendConfigIfMissing(jsonlPath: string, config: ArConfig): void {
 }
 
 function slugifyName(value: string): string {
-  const slug = value.toLowerCase().replace(/[^a-z0-9]+/g, "-").replace(/^-+|-+$/g, "");
+  const slug = value
+    .toLowerCase()
+    .replace(/[^a-z0-9]+/g, "-")
+    .replace(/^-+|-+$/g, "");
   return slug || "autoresearch-session";
 }
 
 export function inferConfigFromContext(markdown: string): ArConfig | null {
-  const metricLine = markdown.split("\n").find(line => /\*\*Primary\*\*/i.test(line));
+  const metricLine = markdown.split("\n").find((line) => /\*\*Primary\*\*/i.test(line));
   if (!metricLine || metricLine.includes("<") || metricLine.includes(">")) return null;
 
-  const metricMatch = /\*\*Primary\*\*:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\s*(?:\(([^)]*)\))?/i.exec(metricLine);
+  const metricMatch = /\*\*Primary\*\*:\s*([A-Za-z_][A-Za-z0-9_.:-]*)\s*(?:\(([^)]*)\))?/i.exec(
+    metricLine
+  );
   if (!metricMatch) return null;
   const metric = metricMatch[1];
   const details = `${metricMatch[2] ?? ""} ${metricLine}`.toLowerCase();
@@ -283,7 +458,13 @@ export function inferConfigFromContext(markdown: string): ArConfig | null {
   if (!dir) return null;
 
   const unit = (metricMatch[2] ?? "").split(",")[0]?.trim() ?? "";
-  const title = markdown.split("\n").find(line => line.startsWith("# "))?.replace(/^#\s*Autoresearch:\s*/i, "").replace(/^#\s*/, "").trim() ?? "autoresearch-session";
+  const title =
+    markdown
+      .split("\n")
+      .find((line) => line.startsWith("# "))
+      ?.replace(/^#\s*Autoresearch:\s*/i, "")
+      .replace(/^#\s*/, "")
+      .trim() ?? "autoresearch-session";
 
   return {
     type: "config",

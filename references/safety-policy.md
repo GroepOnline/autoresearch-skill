@@ -27,10 +27,12 @@ git reset --hard HEAD~
 
 Use safer options:
 
-- create a dedicated branch for the experiment session
+- create a dedicated branch for the experiment session (prefix `autoresearch/`)
 - use `git worktree` per candidate run when available
 - restrict restore/clean operations to allowlisted files and generated paths
 - record the base commit in state before changing files
+
+The extension start gate enforces this: starting on `main`/`master` or any non-isolated branch is blocked unless it can auto-switch to `autoresearch/<goal>`.
 
 Recommended discard pattern:
 

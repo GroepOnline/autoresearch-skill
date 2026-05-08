@@ -14,9 +14,23 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
 import type { LoopState } from "./loop.js";
-import { buildContinuationMessage, evaluateContinuation, summarizeLoopStop, type LoopContinuation } from "./loop.js";
+import {
+  buildContinuationMessage,
+  evaluateContinuation,
+  summarizeLoopStop,
+  type LoopContinuation,
+} from "./loop.js";
 import { evaluateToolCall, evaluateWorkingTreeMutation, hasAutoresearchSession } from "./policy.js";
-import { buildContextInjection, delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
+import {
+  buildContextInjection,
+  delta,
+  direction,
+  fmt,
+  metricName,
+  metricUnit,
+  paths,
+  readState,
+} from "./state.js";
 import { footerText } from "./ui.js";
 import { registerAutoresearchTools } from "./tools.js";
 
@@ -24,13 +38,18 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   // ─── In-memory loop state ────────────────────────────────────────────────────
   let activeLoop: LoopState | null = null;
 
-  const storeLoop = (loop: LoopState | null) => { activeLoop = loop; };
+  const storeLoop = (loop: LoopState | null) => {
+    activeLoop = loop;
+  };
 
   // ─── session_start ───────────────────────────────────────────────────────────
   pi.on("session_start", async (_event, ctx) => {
     // Restore loop state from session entries
-    const entries: Array<{ type: string; customType?: string; data?: unknown }> = ctx.sessionManager.getEntries();
-    const lastLoopEntry = entries.filter(e => e.type === "custom" && e.customType === "autoresearch-loop").pop();
+    const entries: Array<{ type: string; customType?: string; data?: unknown }> =
+      ctx.sessionManager.getEntries();
+    const lastLoopEntry = entries
+      .filter((e) => e.type === "custom" && e.customType === "autoresearch-loop")
+      .pop();
     if (lastLoopEntry?.data) activeLoop = lastLoopEntry.data as LoopState;
 
     // Re-derive consecutive discards and plateau from JSONL (survives session restarts)
@@ -59,7 +78,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
     if (state.hasIdeas) {
       const lines = fs.readFileSync(paths(ctx.cwd).ideas, "utf-8").split("\n");
-      const count = lines.filter(l => l.startsWith("- ")).length;
+      const count = lines.filter((l) => l.startsWith("- ")).length;
       if (count > 0) ctx.ui.notify(`💡 autoresearch.ideas.md heeft ${count} ideeën`, "info");
     }
   });
@@ -96,8 +115,14 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     if (hasAutoresearchSession(ctx.cwd)) {
       const audit = evaluateWorkingTreeMutation(ctx.cwd);
       if (audit.block) {
-        fs.writeFileSync(paths(ctx.cwd).sentinel, `paused by post-run audit: ${audit.reason ?? "policy violation"}\n`);
-        ctx.ui.notify(`⛔ Autoresearch post-run audit blocked continuation: ${audit.reason}`, "error");
+        fs.writeFileSync(
+          paths(ctx.cwd).sentinel,
+          `paused by post-run audit: ${audit.reason ?? "policy violation"}\n`
+        );
+        ctx.ui.notify(
+          `⛔ Autoresearch post-run audit blocked continuation: ${audit.reason}`,
+          "error"
+        );
         if (activeLoop) {
           const elapsedMinutes = (Date.now() - activeLoop.startedAt) / 60_000;
           const runsUsed = state.runCount - activeLoop.runsAtStart;
@@ -111,7 +136,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
             remainingMinutes: activeLoop.maxMinutes - elapsedMinutes,
           };
           const summary = summarizeLoopStop(activeLoop, cont, state);
-          pi.sendMessage({ customType: "autoresearch-stop", content: summary, display: true }, { triggerTurn: false });
+          pi.sendMessage(
+            { customType: "autoresearch-stop", content: summary, display: true },
+            { triggerTurn: false }
+          );
           writeStopSummary(ctx.cwd, activeLoop, cont, state);
           activeLoop = null;
           pi.appendEntry("autoresearch-loop", null);
@@ -150,7 +178,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     const cont = evaluateContinuation(state, activeLoop, Date.now());
     if (!cont.shouldContinue) {
       const summary = summarizeLoopStop(activeLoop, cont, state);
-      pi.sendMessage({ customType: "autoresearch-stop", content: summary, display: true }, { triggerTurn: false });
+      pi.sendMessage(
+        { customType: "autoresearch-stop", content: summary, display: true },
+        { triggerTurn: false }
+      );
       // ── Write stop summary to disk ──────────────────────────────────────
       writeStopSummary(ctx.cwd, activeLoop, cont, state);
       activeLoop = null;
@@ -169,7 +200,9 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
     const { preparation } = event;
     const config = state.config;
-    const loopLine = activeLoop ? `Mode: ${activeLoop.mode} | Budget: ${activeLoop.maxRuns} runs / ${activeLoop.maxMinutes} min` : "Mode: geen actieve loop";
+    const loopLine = activeLoop
+      ? `Mode: ${activeLoop.mode} | Budget: ${activeLoop.maxRuns} runs / ${activeLoop.maxMinutes} min`
+      : "Mode: geen actieve loop";
 
     const summary = [
       `## Autoresearch — Context Preserved`,
@@ -177,12 +210,18 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       `Metric: ${metricName(config)} (${direction(config)})`,
       `Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`,
       loopLine,
-      state.baselineMetric !== null ? `Baseline: ${fmt(state.baselineMetric, metricUnit(config))}` : "",
-      state.bestMetric !== null && state.bestRun !== null ? `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}` : "",
+      state.baselineMetric !== null
+        ? `Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`
+        : "",
+      state.bestMetric !== null && state.bestRun !== null
+        ? `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+        : "",
       "",
       `State: autoresearch.jsonl, autoresearch.md, experiments/worklog.md`,
       `Resume: read autoresearch.jsonl + worklog.md, continue from run ${state.runCount + 1}`,
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     return {
       compaction: {
@@ -205,7 +244,12 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
-function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, state: import("./types.js").ArState): void {
+function writeStopSummary(
+  cwd: string,
+  loop: LoopState,
+  cont: LoopContinuation,
+  state: import("./types.js").ArState
+): void {
   const config = state.config;
   if (!config) return;
 
@@ -229,17 +273,22 @@ function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, 
     `| Crash | ${state.crashedCount} |`,
   ];
 
-  if (state.baselineMetric !== null) lines.push(`| Baseline | ${fmt(state.baselineMetric, metricUnit(config))} |`);
+  if (state.baselineMetric !== null)
+    lines.push(`| Baseline | ${fmt(state.baselineMetric, metricUnit(config))} |`);
   if (state.bestMetric !== null && state.bestRun !== null) {
-    lines.push(`| Best | ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)} |`);
+    lines.push(
+      `| Best | ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)} |`
+    );
   }
 
   lines.push("", "## Recent Results", "");
   const recent = state.results.slice(-10).reverse();
   for (const r of recent) {
-    const action = state.decisions.find(d => d.run === r.run)?.action ?? r.status;
+    const action = state.decisions.find((d) => d.run === r.run)?.action ?? r.status;
     const d = state.baselineMetric !== null ? delta(r.value, state.baselineMetric) : "";
-    lines.push(`- **#${r.run}** ${action}: ${fmt(r.value, metricUnit(config))} ${d} — ${r.description}`);
+    lines.push(
+      `- **#${r.run}** ${action}: ${fmt(r.value, metricUnit(config))} ${d} — ${r.description}`
+    );
   }
 
   lines.push("", `*Gegenereerd door autoresearch plugin*`);
@@ -248,5 +297,7 @@ function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, 
     const dir = path.join(cwd, "experiments");
     if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, lines.join("\n") + "\n");
-  } catch { /* best-effort */ }
+  } catch {
+    /* best-effort */
+  }
 }

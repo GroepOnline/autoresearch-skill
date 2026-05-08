@@ -22,7 +22,7 @@ When installed as a Pi package, the plugin provides:
 
 ### Stop Conditions
 
-The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 runs without improvement), diff-size violation, pause sentinel, corrupt state, dirty git, test failures, or benchmark noise.
+The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 runs without improvement), diff-size violation, pause sentinel, corrupt state, dirty git, missing isolated git context (must be `autoresearch/*` branch or worktree), test failures, or benchmark noise.
 
 ## Start workflow
 

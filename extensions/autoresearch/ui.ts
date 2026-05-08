@@ -17,9 +17,13 @@ export function footerText(state: ArState): string {
 
 export function statusText(state: ArState): string {
   if (state.parseErrors.length > 0) {
-    return ["⚠️ autoresearch.jsonl bevat fouten:", ...state.parseErrors.map(error => `- ${error}`)].join("\n");
+    return [
+      "⚠️ autoresearch.jsonl bevat fouten:",
+      ...state.parseErrors.map((error) => `- ${error}`),
+    ].join("\n");
   }
-  if (!state.config) return "Geen actieve autoresearch sessie.\n\nStart met: /autoresearch new <doel>";
+  if (!state.config)
+    return "Geen actieve autoresearch sessie.\n\nStart met: /autoresearch new <doel>";
 
   const config = state.config;
   const last = state.results.at(-1);
@@ -28,30 +32,52 @@ export function statusText(state: ArState): string {
     `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
     `Metric: ${metricName(config)} (${direction(config)} = beter)`,
     `Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`,
-    state.baselineMetric !== null ? `Baseline: ${fmt(state.baselineMetric, metricUnit(config))}` : "",
-    state.bestMetric !== null && state.bestRun !== null ? `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}` : "Best: geen resultaten nog",
+    state.baselineMetric !== null
+      ? `Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`
+      : "",
+    state.bestMetric !== null && state.bestRun !== null
+      ? `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+      : "Best: geen resultaten nog",
     last ? `Laatste: run #${last.run} → ${last.status} — ${last.description}` : "",
     state.isPaused ? "⏸️  GEPAUZEERD — gebruik /autoresearch resume" : "▶️  ACTIEF",
     state.hasIdeas ? "💡 autoresearch.ideas.md aanwezig" : "",
-  ].filter(Boolean).join("\n");
+  ]
+    .filter(Boolean)
+    .join("\n");
 }
 
 export function dashboardRows(state: ArState): string[] {
   if (!state.config) return [];
 
   const config = state.config;
-  const rows = [`🔬 ${config.name} | ${state.runCount} runs | ✅${state.keptCount} ❌${state.discardedCount} 💥${state.crashedCount}`];
-  if (state.baselineMetric !== null) rows.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
-  if (state.bestMetric !== null && state.bestRun !== null) rows.push(`Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`);
+  const rows = [
+    `🔬 ${config.name} | ${state.runCount} runs | ✅${state.keptCount} ❌${state.discardedCount} 💥${state.crashedCount}`,
+  ];
+  if (state.baselineMetric !== null)
+    rows.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
+  if (state.bestMetric !== null && state.bestRun !== null)
+    rows.push(
+      `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+    );
   rows.push("─".repeat(60));
   rows.push(`# │ ${metricName(config).padEnd(12)} │ status   │ beschrijving`);
   rows.push("─".repeat(60));
 
   for (const result of state.results.slice(-12)) {
-    const action = state.decisions.find(decision => decision.run === result.run)?.action ?? result.status;
-    const icon = action === "keep" || action === "baseline" ? "✅" : action === "discard" ? "❌" : result.status === "crash" ? "💥" : "·";
+    const action =
+      state.decisions.find((decision) => decision.run === result.run)?.action ?? result.status;
+    const icon =
+      action === "keep" || action === "baseline"
+        ? "✅"
+        : action === "discard"
+          ? "❌"
+          : result.status === "crash"
+            ? "💥"
+            : "·";
     const d = state.baselineMetric !== null ? delta(result.value, state.baselineMetric) : "";
-    rows.push(`${String(result.run).padStart(3)} │ ${fmt(result.value, metricUnit(config)).padEnd(12)} │ ${icon} ${action.padEnd(7)} │ ${result.description.slice(0, 28)} ${d}`);
+    rows.push(
+      `${String(result.run).padStart(3)} │ ${fmt(result.value, metricUnit(config)).padEnd(12)} │ ${icon} ${action.padEnd(7)} │ ${result.description.slice(0, 28)} ${d}`
+    );
   }
 
   return rows;
