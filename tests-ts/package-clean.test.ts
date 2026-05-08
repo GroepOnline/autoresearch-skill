@@ -101,7 +101,7 @@ test("typeof null !== 'string' guard returns empty string for null stdout", () =
 // (package-clean.mjs prints: join(outDir, `${pkg.name}-${pkg.version}.tgz`))
 // ---------------------------------------------------------------------------
 
-test("tarball path uses name and version from package.json", () => {
+test("tarball path uses name and version from package.json", async () => {
   const { join } = await import("node:path");
   const outDir = "/dist";
   const pkg = { name: "pi-autoresearch", version: "1.0.0" };
@@ -109,7 +109,7 @@ test("tarball path uses name and version from package.json", () => {
   assert.equal(tarball, "/dist/pi-autoresearch-1.0.0.tgz");
 });
 
-test("tarball path changes with different name/version combinations", () => {
+test("tarball path changes with different name/version combinations", async () => {
   const { join } = await import("node:path");
   const outDir = "/output";
   const cases: Array<[string, string, string]> = [
