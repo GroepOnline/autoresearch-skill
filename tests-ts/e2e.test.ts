@@ -16,7 +16,7 @@ test("e2e fixture: new -> filled contract -> start -> result -> decision -> dash
   const cwd = tempProject();
   execSync("git init", { cwd, stdio: "ignore" });
   const p = paths(cwd);
-  mkdirSync(join(cwd, "experiments"));
+  mkdirSync(p.dir, { recursive: true });
 
   // /autoresearch new output after the user has filled placeholders.
   writeFileSync(
@@ -31,7 +31,7 @@ test("e2e fixture: new -> filled contract -> start -> result -> decision -> dash
       "- **Primary**: latency_ms (ms, lower is better)",
       "",
       "## How to Run",
-      "`./autoresearch.sh` prints METRIC latency_ms values.",
+      "`./.agents/autoresearch/autoresearch.sh` prints METRIC latency_ms values.",
       "",
       "## Files in Scope",
       "- src/parser.ts",
@@ -41,7 +41,7 @@ test("e2e fixture: new -> filled contract -> start -> result -> decision -> dash
     ].join("\n")
   );
   writeFileSync(
-    join(cwd, "autoresearch.sh"),
+    p.benchmark,
     [
       "#!/usr/bin/env bash",
       "set -euo pipefail",

@@ -11,7 +11,7 @@ import {
   setMaxDiffLines,
   validateContractForStart,
 } from "./policy.js";
-import { parseStartBudgets, paths, readState } from "./state.js";
+import { ensureArtifactsLayout, parseStartBudgets, paths, readState } from "./state.js";
 import type { ArConfig, ArState } from "./types.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
 
@@ -26,15 +26,26 @@ export function registerAutoresearchCommand(
 ): void {
   pi.registerCommand("autoresearch", {
     description:
-      "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate",
+      "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate | finalize [--archive]",
 
     getArgumentCompletions: (prefix: string) => {
-      const subs = ["status", "new", "start", "ralph", "pause", "resume", "dashboard", "validate"];
+      const subs = [
+        "status",
+        "new",
+        "start",
+        "ralph",
+        "pause",
+        "resume",
+        "dashboard",
+        "validate",
+        "finalize",
+      ];
       return subs.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
     },
 
     handler: async (args: string, ctx) => {
       const [sub = "", ...rest] = (args ?? "").trim().split(/\s+/).filter(Boolean);
+      ensureArtifactsLayout(ctx.cwd);
       const p = paths(ctx.cwd);
 
       switch (sub) {
@@ -90,16 +101,16 @@ export function registerAutoresearchCommand(
           if (state.parseErrors.length > 0) {
             ctx.ui.notify(
               [
-                "❌ autoresearch.jsonl bevat fouten:",
+                "❌ .agents/autoresearch/autoresearch.jsonl bevat fouten:",
                 ...state.parseErrors.map((e) => `- ${e}`),
               ].join("\n"),
               "error"
             );
           } else if (!state.config) {
-            ctx.ui.notify("Geen autoresearch.jsonl gevonden.", "warning");
+            ctx.ui.notify("Geen .agents/autoresearch/autoresearch.jsonl gevonden.", "warning");
           } else {
             ctx.ui.notify(
-              `✅ autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`,
+              `✅ .agents/autoresearch/autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`,
               "info"
             );
           }
@@ -115,11 +126,11 @@ export function registerAutoresearchCommand(
           if (fs.existsSync(p.context)) {
             const ok = await ctx.ui.confirm(
               "Overschrijven?",
-              `autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`
+              `.agents/autoresearch/autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`
             );
             if (!ok) return;
           }
-          fs.mkdirSync(path.join(ctx.cwd, "experiments"), { recursive: true });
+          fs.mkdirSync(p.dir, { recursive: true });
 
           const isolation = ensureAutoresearchBranch(ctx.cwd, goal);
           if (!isolation.ok) {
@@ -142,7 +153,7 @@ export function registerAutoresearchCommand(
               "- **Secondary**: correctness pass/fail guardrail",
               "",
               "## How to Run",
-              "`./autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
+              "`./.agents/autoresearch/autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
               "",
               "## Files in Scope",
               "- .",
@@ -159,7 +170,7 @@ export function registerAutoresearchCommand(
               "- (baseline not measured yet)",
             ].join("\n")
           );
-          const benchmark = path.join(ctx.cwd, "autoresearch.sh");
+          const benchmark = p.benchmark;
           if (!fs.existsSync(benchmark)) {
             fs.writeFileSync(
               benchmark,
@@ -213,13 +224,71 @@ export function registerAutoresearchCommand(
                 : "",
               "",
               "Volgende stappen:",
-              "1. (Optioneel) verfijn autoresearch.md — metric, scope en constraints",
-              "2. Controleer autoresearch.sh en pas benchmark/checks aan indien nodig",
+              "1. (Optioneel) verfijn .agents/autoresearch/autoresearch.md — metric, scope en constraints",
+              "2. Controleer .agents/autoresearch/autoresearch.sh en pas benchmark/checks aan indien nodig",
               "3. /autoresearch start [runs] [min] — begin assisted loop",
               "   of: /autoresearch ralph [runs] [min] — begin Ralph mode",
             ]
               .filter(Boolean)
               .join("\n"),
+            "info"
+          );
+          return;
+        }
+
+        case "finalize": {
+          const state = readState(ctx.cwd);
+          if (!state.config) {
+            ctx.ui.notify("Geen actieve autoresearch sessie om te finalizen.", "warning");
+            return;
+          }
+          const archiveRequested =
+            rest.includes("--archive") || rest.includes("archive") || rest.includes("-a");
+
+          const writeDashboard = await ctx.ui.confirm(
+            "Dashboard schrijven?",
+            "Wil je een einddashboard bewaren in .agents/autoresearch/autoresearch-dashboard.md?"
+          );
+          if (writeDashboard) {
+            const rows = dashboardRows(state);
+            fs.writeFileSync(p.dashboard, rows.join("\n") + "\n", "utf-8");
+          }
+
+          const keepArtifacts = await ctx.ui.confirm(
+            "Artefacten behouden?",
+            "Wil je alle autoresearch artefacten bewaren in .agents/autoresearch/? Kies 'Nee' voor cleanup."
+          );
+          if (!keepArtifacts) {
+            if (archiveRequested) {
+              if (!fs.existsSync(p.dir)) {
+                ctx.ui.notify("Geen .agents/autoresearch/ map om te archiveren.", "warning");
+                return;
+              }
+              const confirmedArchive = await ctx.ui.confirm(
+                "Archiveren bevestigen",
+                "Archiveer .agents/autoresearch/ naar experiments/archive/<timestamp>/ ?"
+              );
+              if (confirmedArchive) {
+                const archivedTo = archiveArtifacts(ctx.cwd, p.dir);
+                fs.mkdirSync(p.dir, { recursive: true });
+                ctx.ui.notify(`📦 Gearchiveerd naar ${archivedTo}`, "info");
+                return;
+              }
+            } else {
+              const confirmed = await ctx.ui.confirm(
+                "Cleanup bevestigen",
+                "Verwijder .agents/autoresearch/ volledig (contract, state, benchmark, worklog, dashboard, snapshot)?"
+              );
+              if (confirmed) {
+                fs.rmSync(p.dir, { recursive: true, force: true });
+                ctx.ui.notify("🧹 Autoresearch artefacten opgeruimd.", "info");
+                return;
+              }
+            }
+          }
+
+          ctx.ui.notify(
+            "✅ Finalize voltooid; artefacten blijven in .agents/autoresearch/. Tip: /autoresearch finalize --archive",
             "info"
           );
           return;
@@ -317,7 +386,7 @@ export function registerAutoresearchCommand(
 
         default:
           ctx.ui.notify(
-            `Onbekend subcommando: '${sub}'\n\nGebruik:\n  status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate`,
+            `Onbekend subcommando: '${sub}'\n\nGebruik:\n  status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate | finalize`,
             "warning"
           );
       }
@@ -326,16 +395,18 @@ export function registerAutoresearchCommand(
 }
 
 export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): StartPrereqResult {
+  ensureArtifactsLayout(cwd);
+
   if (!fs.existsSync(p.context))
     return {
       state: readState(cwd),
-      blockMsg: "autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
+      blockMsg: ".agents/autoresearch/autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
     };
-  const benchmark = path.join(cwd, "autoresearch.sh");
+  const benchmark = p.benchmark;
   if (!fs.existsSync(benchmark))
     return {
       state: readState(cwd),
-      blockMsg: "autoresearch.sh niet gevonden. Maak het aan voordat je start.",
+      blockMsg: ".agents/autoresearch/autoresearch.sh niet gevonden. Maak het aan voordat je start.",
     };
   if (fs.existsSync(p.sentinel))
     return {
@@ -381,7 +452,7 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
     return {
       state: readState(cwd),
       blockMsg:
-        "Start geblokkeerd — autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst.",
+        "Start geblokkeerd — .agents/autoresearch/autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst.",
     };
   }
 
@@ -398,7 +469,7 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
       return {
         state,
         blockMsg:
-          "Start geblokkeerd — config ontbreekt en kon niet uit autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`.",
+          "Start geblokkeerd — config ontbreekt en kon niet uit .agents/autoresearch/autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`.",
       };
     }
     appendConfigIfMissing(p.jsonl, config);
@@ -430,6 +501,21 @@ function appendConfigIfMissing(jsonlPath: string, config: ArConfig): void {
   const current = fs.readFileSync(jsonlPath, "utf-8");
   if (current.trim()) return;
   fs.writeFileSync(jsonlPath, line, "utf-8");
+}
+
+export function archiveArtifacts(cwd: string, artifactsDir: string): string {
+  const archiveRoot = path.join(cwd, "experiments", "archive");
+  fs.mkdirSync(archiveRoot, { recursive: true });
+  const stamp = new Date().toISOString().replace(/[:.]/g, "-");
+  const target = path.join(archiveRoot, stamp);
+  fs.mkdirSync(target, { recursive: true });
+
+  for (const entry of fs.readdirSync(artifactsDir)) {
+    const src = path.join(artifactsDir, entry);
+    const dst = path.join(target, entry);
+    fs.renameSync(src, dst);
+  }
+  return target;
 }
 
 function slugifyName(value: string): string {

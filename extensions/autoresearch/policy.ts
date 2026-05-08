@@ -58,6 +58,16 @@ const RUNTIME_ARTIFACT_PATTERNS = [
   /^\.autoresearch-off$/,
   /^experiments(?:\/|$)/,
   /^\.autoresearch(?:\/|$)/,
+  /^\.agents\/autoresearch(?:\/|$)/,
+  /^\.agents\/autoresearch\/autoresearch\.md$/,
+  /^\.agents\/autoresearch\/autoresearch\.jsonl$/,
+  /^\.agents\/autoresearch\/AUTORESEARCH_STATE.*\.json$/,
+  /^\.agents\/autoresearch\/autoresearch-dashboard\.md$/,
+  /^\.agents\/autoresearch\/autoresearch\.ideas\.md$/,
+  /^\.agents\/autoresearch\/autoresearch\.sh$/,
+  /^\.agents\/autoresearch\/worklog\.md$/,
+  /^\.agents\/autoresearch\/\.autoresearch-off$/,
+  /^\.agents\/$/, // Allow .agents/ directory itself when created by autoresearch
 ];
 
 // Whitelist of allowed bash commands with their full allowed argument patterns.
@@ -246,7 +256,7 @@ export function readContract(cwd: string): AutoresearchContract {
     return {
       filesInScope: [],
       offLimits: [],
-      placeholders: ["missing autoresearch.md"],
+      placeholders: ["missing .agents/autoresearch/autoresearch.md"],
       errors: [],
     };
   return parseContract(fs.readFileSync(context, "utf-8"));
@@ -255,7 +265,9 @@ export function readContract(cwd: string): AutoresearchContract {
 export function validateContractForStart(contract: AutoresearchContract): string[] {
   const errors: string[] = [];
   if (contract.placeholders && contract.placeholders.length > 0) {
-    errors.push(`autoresearch.md bevat nog placeholders: ${contract.placeholders.join("; ")}`);
+    errors.push(
+      `.agents/autoresearch/autoresearch.md bevat nog placeholders: ${contract.placeholders.join("; ")}`
+    );
   }
   if (contract.errors && contract.errors.length > 0) {
     errors.push(...contract.errors);

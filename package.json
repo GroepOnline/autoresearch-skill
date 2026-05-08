@@ -58,6 +58,8 @@
     "test:e2e": "bash scripts/e2e-automated-test.sh",
     "test:e2e:pi": "bash scripts/autoresearch-e2e-test.sh",
     "validate": "node scripts/validate.mjs",
+    "benchmark": "node scripts/benchmark-code-quality.mjs",
+    "benchmark:comparison": "node scripts/benchmark-comparison.mjs",
     "lint": "eslint extensions/**/*.ts --max-warnings 0",
     "lint:fix": "eslint extensions/**/*.ts --fix",
     "format": "prettier --write \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",

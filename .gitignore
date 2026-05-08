@@ -15,6 +15,7 @@ autoresearch.ideas.md
 experiments/
 .autoresearch/
 .autoresearch-off
+.agents/autoresearch/
 *.tmp
 *.bak
 

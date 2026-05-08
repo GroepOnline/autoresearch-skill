@@ -46,6 +46,13 @@ Manual testing of the autoresearch extension is time-consuming and error-prone. 
 - ALWAYS use isolated test projects to avoid affecting real work
 - See E2E_TESTING.md for detailed session management guidelines
 
+## Artifact Layout & Cleanup
+
+- Runtime artifacts must stay inside `.agents/autoresearch/` (do not scatter files in repo root).
+- Use `/autoresearch finalize` after an experiment to close out cleanly.
+- Use `/autoresearch finalize --archive` to move `.agents/autoresearch/` to `experiments/archive/<timestamp>/`.
+- If user does not want to keep artifacts, cleanup may remove `.agents/autoresearch/` after explicit confirmation.
+
 ## Test Scenarios
 
 ### Phase 1 Tests (Extension Loading)

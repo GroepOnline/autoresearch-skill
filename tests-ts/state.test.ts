@@ -1,13 +1,15 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, unlinkSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync, existsSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { parseStartBudgets, paths, readState } from "../extensions/autoresearch/state.js";
+import { ensureArtifactsLayout, parseStartBudgets, paths, readState } from "../extensions/autoresearch/state.js";
 import { dashboardRows, footerText, statusText } from "../extensions/autoresearch/ui.js";
 
 function tempProject(): string {
-  return mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  mkdirSync(paths(cwd).dir, { recursive: true });
+  return cwd;
 }
 
 test("readState summarizes baseline, keep decisions, and footer text", () => {
@@ -173,4 +175,86 @@ test("readState blocks oversized JSONL files", () => {
 
   const state = readState(cwd);
   assert.ok(state.parseErrors.some((error) => error.includes("too many lines")));
+});
+
+test("ensureArtifactsLayout creates .agents/autoresearch directory", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  const p = paths(cwd);
+
+  assert.ok(!existsSync(p.dir));
+
+  ensureArtifactsLayout(cwd);
+
+  assert.ok(existsSync(p.dir));
+});
+
+test("ensureArtifactsLayout migrates from .autoresearch/ directory", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  const p = paths(cwd);
+
+  // Create old .autoresearch/ directory with files
+  const oldDir = p.legacy.oldDir;
+  mkdirSync(oldDir, { recursive: true });
+  writeFileSync(join(oldDir, "autoresearch.jsonl"), '{"type":"config"}\n');
+  writeFileSync(join(oldDir, "autoresearch.md"), "# Test\n");
+  writeFileSync(join(oldDir, ".autoresearch-off"), "paused\n");
+
+  ensureArtifactsLayout(cwd);
+
+  // Old directory should be cleaned up (or empty)
+  assert.ok(!existsSync(join(oldDir, "autoresearch.jsonl")));
+
+  // Files should be in new location
+  assert.ok(existsSync(p.jsonl));
+  assert.ok(existsSync(p.context));
+  assert.ok(existsSync(p.sentinel));
+
+  // Content should be preserved
+  assert.equal(readState(cwd).config?.type, "config");
+});
+
+test("ensureArtifactsLayout migrates from root-level legacy files", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  const p = paths(cwd);
+
+  // Create root-level legacy files
+  writeFileSync(p.legacy.jsonl, '{"type":"config"}\n');
+  writeFileSync(p.legacy.context, "# Test\n");
+  writeFileSync(p.legacy.sentinel, "paused\n");
+
+  ensureArtifactsLayout(cwd);
+
+  // Old files should be gone
+  assert.ok(!existsSync(p.legacy.jsonl));
+  assert.ok(!existsSync(p.legacy.context));
+  assert.ok(!existsSync(p.legacy.sentinel));
+
+  // Files should be in new location
+  assert.ok(existsSync(p.jsonl));
+  assert.ok(existsSync(p.context));
+  assert.ok(existsSync(p.sentinel));
+
+  // Content should be preserved
+  assert.equal(readState(cwd).config?.type, "config");
+});
+
+test("ensureArtifactsLayout does not overwrite existing files", () => {
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  const p = paths(cwd);
+
+  // Create files in new location first
+  mkdirSync(p.dir, { recursive: true });
+  writeFileSync(p.jsonl, '{"type":"config","name":"new"}\n');
+  writeFileSync(p.context, "# New\n");
+
+  // Create old files with different content
+  writeFileSync(p.legacy.jsonl, '{"type":"config","name":"old"}\n');
+  writeFileSync(p.legacy.context, "# Old\n");
+
+  ensureArtifactsLayout(cwd);
+
+  // New files should be preserved (not overwritten)
+  assert.equal(readState(cwd).config?.name, "new");
+  assert.ok(existsSync(p.jsonl));
+  assert.ok(existsSync(p.context));
 });

@@ -28,7 +28,8 @@ export function clearStateCache(cwd?: string): void {
 }
 
 export function paths(cwd: string) {
-  return {
+  const artifactsDir = path.join(cwd, ".agents", "autoresearch");
+  const legacy = {
     jsonl: path.join(cwd, "autoresearch.jsonl"),
     context: path.join(cwd, "autoresearch.md"),
     sentinel: path.join(cwd, ".autoresearch-off"),
@@ -36,6 +37,20 @@ export function paths(cwd: string) {
     worklog: path.join(cwd, "experiments", "worklog.md"),
     ideas: path.join(cwd, "autoresearch.ideas.md"),
     snapshot: path.join(cwd, "AUTORESEARCH_STATE.json"),
+    benchmark: path.join(cwd, "autoresearch.sh"),
+    oldDir: path.join(cwd, ".autoresearch"),
+  };
+  return {
+    dir: artifactsDir,
+    jsonl: path.join(artifactsDir, "autoresearch.jsonl"),
+    context: path.join(artifactsDir, "autoresearch.md"),
+    sentinel: path.join(artifactsDir, ".autoresearch-off"),
+    dashboard: path.join(artifactsDir, "autoresearch-dashboard.md"),
+    worklog: path.join(artifactsDir, "worklog.md"),
+    ideas: path.join(artifactsDir, "autoresearch.ideas.md"),
+    snapshot: path.join(artifactsDir, "AUTORESEARCH_STATE.json"),
+    benchmark: path.join(artifactsDir, "autoresearch.sh"),
+    legacy,
   };
 }
 
@@ -99,6 +114,50 @@ function emptyState(cwd: string): ArState {
   };
 }
 
+function safeMoveIfNeeded(fromPath: string, toPath: string): void {
+  if (!fs.existsSync(fromPath) || fs.existsSync(toPath)) return;
+  fs.mkdirSync(path.dirname(toPath), { recursive: true });
+  try {
+    fs.renameSync(fromPath, toPath);
+  } catch (error) {
+    logger.catch("safeMoveIfNeeded: rename failed", error, { fromPath, toPath });
+  }
+}
+
+export function ensureArtifactsLayout(cwd: string): void {
+  const p = paths(cwd);
+  fs.mkdirSync(p.dir, { recursive: true });
+
+  // Migrate from old .autoresearch/ directory to .agents/autoresearch/
+  const oldDir = p.legacy.oldDir;
+  if (fs.existsSync(oldDir)) {
+    safeMoveIfNeeded(path.join(oldDir, "autoresearch.jsonl"), p.jsonl);
+    safeMoveIfNeeded(path.join(oldDir, "autoresearch.md"), p.context);
+    safeMoveIfNeeded(path.join(oldDir, ".autoresearch-off"), p.sentinel);
+    safeMoveIfNeeded(path.join(oldDir, "autoresearch-dashboard.md"), p.dashboard);
+    safeMoveIfNeeded(path.join(oldDir, "worklog.md"), p.worklog);
+    safeMoveIfNeeded(path.join(oldDir, "autoresearch.ideas.md"), p.ideas);
+    safeMoveIfNeeded(path.join(oldDir, "AUTORESEARCH_STATE.json"), p.snapshot);
+    safeMoveIfNeeded(path.join(oldDir, "autoresearch.sh"), p.benchmark);
+    // Try to remove old directory if empty
+    try {
+      fs.rmdirSync(oldDir);
+    } catch {
+      // Ignore if not empty or other error
+    }
+  }
+
+  // Migrate from root-level legacy files
+  safeMoveIfNeeded(p.legacy.context, p.context);
+  safeMoveIfNeeded(p.legacy.jsonl, p.jsonl);
+  safeMoveIfNeeded(p.legacy.sentinel, p.sentinel);
+  safeMoveIfNeeded(p.legacy.dashboard, p.dashboard);
+  safeMoveIfNeeded(p.legacy.worklog, p.worklog);
+  safeMoveIfNeeded(p.legacy.ideas, p.ideas);
+  safeMoveIfNeeded(p.legacy.snapshot, p.snapshot);
+  safeMoveIfNeeded(p.legacy.benchmark, p.benchmark);
+}
+
 function isObject(value: unknown): value is Record<string, unknown> {
   return !!value && typeof value === "object" && !Array.isArray(value);
 }
@@ -123,6 +182,8 @@ function stateSignature(cwd: string): string {
 }
 
 export function readState(cwd: string): ArState {
+  ensureArtifactsLayout(cwd);
+
   // Clean up orphaned temp files from previous runs
   cleanupOrphanedTempFiles(cwd);
 
@@ -423,7 +484,7 @@ export function buildContextInjection(
   if (state.parseErrors.length > 0) {
     return [
       "## Autoresearch blocked",
-      "autoresearch.jsonl has parse or schema errors. Fix these before continuing:",
+      ".agents/autoresearch/autoresearch.jsonl has parse or schema errors. Fix these before continuing:",
       ...state.parseErrors.map((error) => `- ${error}`),
     ].join("\n");
   }
@@ -508,7 +569,7 @@ export function buildContextInjection(
 
   md += `\n### Regels\n`;
   md += `- ÉÉN hypothese per run\n`;
-  md += `- Run \`./autoresearch.sh\` als benchmark\n`;
+  md += `- Run \`./.agents/autoresearch/autoresearch.sh\` als benchmark\n`;
   md += `- Gebruik \`autoresearch_decide\` voor keep/discard/stop\n`;
   md += `- Stop bij: budget op, safety issues, corrupte state, noise, of test failures\n`;
 

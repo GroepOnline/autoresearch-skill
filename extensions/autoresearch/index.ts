@@ -79,7 +79,7 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     if (state.hasIdeas) {
       const lines = fs.readFileSync(paths(ctx.cwd).ideas, "utf-8").split("\n");
       const count = lines.filter((l) => l.startsWith("- ")).length;
-      if (count > 0) ctx.ui.notify(`💡 autoresearch.ideas.md heeft ${count} ideeën`, "info");
+      if (count > 0) ctx.ui.notify(`💡 .agents/autoresearch/autoresearch.ideas.md heeft ${count} ideeën`, "info");
     }
   });
 
@@ -217,15 +217,15 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         ? `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
         : "",
       "",
-      `State: autoresearch.jsonl, autoresearch.md, experiments/worklog.md`,
-      `Resume: read autoresearch.jsonl + worklog.md, continue from run ${state.runCount + 1}`,
+      `State: .agents/autoresearch/autoresearch.jsonl, .agents/autoresearch/autoresearch.md, .agents/autoresearch/worklog.md`,
+      `Resume: read .agents/autoresearch/autoresearch.jsonl + .agents/autoresearch/worklog.md, continue from run ${state.runCount + 1}`,
     ]
       .filter(Boolean)
       .join("\n");
 
     return {
       compaction: {
-        summary: `${summary}\n\n[See autoresearch.jsonl for full history]`,
+        summary: `${summary}\n\n[See .agents/autoresearch/autoresearch.jsonl for full history]`,
         firstKeptEntryId: preparation.firstKeptEntryId,
         tokensBefore: preparation.tokensBefore,
       },

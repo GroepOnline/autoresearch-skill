@@ -119,12 +119,13 @@ test("runtime artifacts are allowed even with narrow scope", () => {
   const contract = { filesInScope: ["src/parser.ts"], offLimits: [] };
 
   assert.equal(isRuntimeArtifact("autoresearch.jsonl"), true);
+  assert.equal(isRuntimeArtifact(".agents/autoresearch/autoresearch.jsonl"), true);
   assert.equal(
     evaluateToolCall("write", { path: "autoresearch.jsonl" }, cwd, contract).block,
     false
   );
   assert.equal(
-    evaluateToolCall("write", { path: "experiments/worklog.md" }, cwd, contract).block,
+    evaluateToolCall("write", { path: ".agents/autoresearch/worklog.md" }, cwd, contract).block,
     false
   );
 });
@@ -132,10 +133,10 @@ test("runtime artifacts are allowed even with narrow scope", () => {
 test("dirty git start filter allows runtime artifacts created by /new", () => {
   const cwd = tempProject();
   initGit(cwd);
-  mkdirSync(join(cwd, "experiments"));
-  writeFileSync(join(cwd, "autoresearch.md"), "# Autoresearch\n");
-  writeFileSync(join(cwd, "autoresearch.sh"), "#!/usr/bin/env bash\n");
-  writeFileSync(join(cwd, "experiments", "worklog.md"), "# Worklog\n");
+  mkdirSync(join(cwd, ".agents", "autoresearch"), { recursive: true });
+  writeFileSync(join(cwd, ".agents", "autoresearch", "autoresearch.md"), "# Autoresearch\n");
+  writeFileSync(join(cwd, ".agents", "autoresearch", "autoresearch.sh"), "#!/usr/bin/env bash\n");
+  writeFileSync(join(cwd, ".agents", "autoresearch", "worklog.md"), "# Worklog\n");
 
   assert.deepEqual(dirtyUserPaths(cwd), []);
 });

@@ -1,6 +1,10 @@
 import assert from "node:assert/strict";
 import test from "node:test";
-import { evaluateContinuation, type LoopState } from "../extensions/autoresearch/loop.js";
+import {
+  buildContinuationMessage,
+  evaluateContinuation,
+  type LoopState,
+} from "../extensions/autoresearch/loop.js";
 import { parseStartBudgets } from "../extensions/autoresearch/state.js";
 import type { ArState } from "../extensions/autoresearch/types.js";
 
@@ -137,4 +141,19 @@ test("loop continues when plateau limit not yet reached", () => {
     Date.now()
   );
   assert.equal(cont.shouldContinue, true);
+});
+
+test("continuation prompt references centralized .agents/autoresearch artifacts", () => {
+  const state = baseState({
+    runCount: 1,
+    baselineMetric: 100,
+    bestMetric: 95,
+    bestRun: 1,
+  });
+  const loop = baseLoop();
+  const cont = evaluateContinuation(state, loop, Date.now());
+  const prompt = buildContinuationMessage(loop, cont, state);
+  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.md/);
+  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.jsonl/);
+  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.sh/);
 });

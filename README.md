@@ -102,14 +102,14 @@ pi install ./dist/pi-autoresearch-1.0.0.tgz
 ## Runtime files created in target repositories
 
 ```text
-autoresearch.md
-autoresearch.jsonl
-AUTORESEARCH_STATE.json
-autoresearch-dashboard.md
-autoresearch.ideas.md
-experiments/worklog.md
+.agents/autoresearch/autoresearch.md
+.agents/autoresearch/autoresearch.jsonl
+.agents/autoresearch/AUTORESEARCH_STATE.json
+.agents/autoresearch/autoresearch-dashboard.md
+.agents/autoresearch/autoresearch.ideas.md
+.agents/autoresearch/worklog.md
 experiments/summary-{timestamp}.md
-.autoresearch-off
+.agents/autoresearch/.autoresearch-off
 ```
 
 These files are created in the target project, not in this package repository.
@@ -134,7 +134,7 @@ Autoresearch is intentionally bounded. It stops or blocks continuation on:
 
 ## Benchmark contract
 
-The default generated benchmark script is `./autoresearch.sh`. It must print at least one parseable metric line:
+The default generated benchmark script is `./.agents/autoresearch/autoresearch.sh`. It must print at least one parseable metric line:
 
 ```text
 METRIC run_seconds=1.234 direction=lower
@@ -150,6 +150,47 @@ python scripts/autoresearch.py validate autoresearch.jsonl
 python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
 python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```
+
+## Code Quality Benchmark
+
+The package includes a code quality benchmark script that measures various metrics:
+
+```bash
+npm run benchmark
+```
+
+This measures:
+- TypeScript compilation time
+- Test execution time (Python and TypeScript)
+- Code size metrics (TypeScript file count, line count)
+- Test file count
+- Dependency counts
+
+All metrics are printed in `METRIC name=value direction=lower|higher` format for easy parsing and comparison.
+
+## Autoresearch System Comparison
+
+The package includes a comprehensive comparison benchmark that compares Pi Autoresearch with Factory.ai's Droid Autoresearch:
+
+```bash
+npm run benchmark:comparison
+```
+
+This evaluates both systems across 15 weighted criteria including:
+- Core functionality (experiment loop, state management, confidence scoring, git isolation)
+- Safety features (correctness guards, safety policy, scope validation)
+- User experience (UI integration, commands, documentation)
+- Extensibility (tool integration, custom metrics, plugin system)
+- Performance (throughput, resource efficiency)
+
+The comparison outputs:
+- Overall scores for each system
+- Detailed feature-by-feature comparison
+- Feature analysis (advantages and ties)
+- Recommendations for when to use each system
+- Summary metrics in METRIC format
+
+See [docs/comparison-methodology.md](docs/comparison-methodology.md) for detailed methodology and interpretation.
 
 ## Validate
 
