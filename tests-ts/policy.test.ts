@@ -178,12 +178,18 @@ test("bash command whitelist blocks unknown commands", () => {
   assert.equal(evaluateBashCommand("chmod 755 script.sh").block, true);
   assert.equal(evaluateBashCommand("mv file.txt newfile.txt").block, true);
   assert.equal(evaluateBashCommand("custom-tool --run").block, true);
+  assert.equal(evaluateBashCommand("npx cowsay hello").block, true);
+  assert.equal(evaluateBashCommand("npm install left-pad").block, true);
+  assert.equal(evaluateBashCommand("node -e console.log(1)").block, true);
 });
 
 test("bash blocks dangerous patterns even with allowed commands", () => {
   assert.equal(evaluateBashCommand("npm test $(whoami)").block, true);
   assert.equal(evaluateBashCommand("git status `cat /etc/passwd`").block, true);
   assert.equal(evaluateBashCommand("python -c 'import os; os.system(\"rm -rf /\")'").block, true);
+  assert.equal(evaluateBashCommand("npm test && rm test.txt").block, true);
+  assert.equal(evaluateBashCommand("git status; rm test.txt").block, true);
+  assert.equal(evaluateBashCommand("npm test > out.txt").block, true);
 });
 
 test("input size validation blocks oversized commands and paths", () => {

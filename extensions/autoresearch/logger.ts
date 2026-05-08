@@ -9,7 +9,7 @@ export interface LogEntry {
   timestamp: string;
   level: LogLevel;
   message: string;
-  context?: Record<string, unknown>;
+  context?: unknown;
 }
 
 // Minimum log level (can be overridden via AUTORESEARCH_LOG_LEVEL env var)
@@ -25,7 +25,7 @@ function getMinLevel(): LogLevel {
   if (env === "debug" || env === "info" || env === "warn" || env === "error") {
     return env;
   }
-  return "info"; // Default to info
+  return "warn";
 }
 
 function shouldLog(level: LogLevel): boolean {
@@ -42,27 +42,37 @@ function formatEntry(entry: LogEntry): string {
   return `${prefix} ${message}`;
 }
 
+function sanitizeString(value: string): string {
+  return value
+    .replace(/[A-Za-z]:\\[^\s"]+/g, "[path]")
+    .replace(/\\\\[^\\\s"]+(?:\\[^\s"]+)*/g, "[path]")
+    .replace(/\/[^\s"]+/g, "[path]");
+}
+
 function sanitizeError(error: unknown): string {
   if (error instanceof Error) {
-    // Remove absolute paths from error messages to avoid leaking sensitive info
-    return error.message.replace(/\/[^\s]+/g, "[path]");
+    return sanitizeString(error.message);
   }
-  return String(error);
+  return sanitizeString(String(error));
+}
+
+function sanitizeValue(value: unknown): unknown {
+  if (typeof value === "string") return sanitizeString(value);
+  if (value instanceof Error) return sanitizeError(value);
+  if (Array.isArray(value)) return value.map((item) => sanitizeValue(item));
+  if (value && typeof value === "object") {
+    return Object.fromEntries(
+      Object.entries(value as Record<string, unknown>).map(([key, nested]) => [
+        key,
+        sanitizeValue(nested),
+      ])
+    );
+  }
+  return value;
 }
 
 function sanitizeContext(context: Record<string, unknown>): Record<string, unknown> {
-  const sanitized: Record<string, unknown> = {};
-  for (const [key, value] of Object.entries(context)) {
-    if (typeof value === "string") {
-      // Remove absolute paths
-      sanitized[key] = value.replace(/\/[^\s]+/g, "[path]");
-    } else if (value instanceof Error) {
-      sanitized[key] = sanitizeError(value);
-    } else {
-      sanitized[key] = value;
-    }
-  }
-  return sanitized;
+  return sanitizeValue(context) as Record<string, unknown>;
 }
 
 function log(level: LogLevel, message: string, context?: Record<string, unknown>): void {

@@ -99,7 +99,7 @@ Lees autoresearch.md en autoresearch.jsonl voor context.
 Run ./autoresearch.sh als benchmark en parse METRIC-regels.
 Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide tool voor keep/discard/stop.
 Leg de beslissing vast in autoresearch.jsonl.
-Stop als budget, safety, corrupt state, noisymetrics, of correctness failures van toepassing zijn.`;
+Stop als budget, safety, corrupt state, noisy metrics, of correctness failures van toepassing zijn.`;
 
 export function buildContinuationMessage(
   loop: LoopState,

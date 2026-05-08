@@ -60,39 +60,41 @@ const RUNTIME_ARTIFACT_PATTERNS = [
   /^\.autoresearch(?:\/|$)/,
 ];
 
-// Whitelist of allowed bash commands with their allowed argument patterns
-// Each entry: [command, allowedArgPattern]
+// Whitelist of allowed bash commands with their full allowed argument patterns.
+// Each entry: [command, allowedFullArgPattern].
 const ALLOWED_COMMAND_WHITELIST: Array<[string, RegExp | null]> = [
-  // Build & test tools
-  ["npm", /^(run|test|run\s+\S+|install|ci|build|start|lint|format|typecheck)(?:\s|$)/],
-  ["yarn", /^(install|add|remove|run|test|build|start|lint|format)(?:\s|$)/],
-  ["pnpm", /^(install|add|remove|run|test|build|start|lint|format)(?:\s|$)/],
-  ["python", /^(-m\s+\S+|--version|--help|\S+\.py\b)(?:\s|$)/],
-  ["python3", /^(-m\s+\S+|--version|--help|\S+\.py\b)(?:\s|$)/],
-  ["pytest", /^(-v|--verbose|-x|--tb=\S+|-k\s+\S+|\S+\.py\b|tests\/)(?:\s|$)/],
-  ["node", /^(--version|--help|scripts\/\S+\.mjs|\S+\.mjs|\S+\.js|-e\s+)/],
-  ["npx", /^(\S+)(?:\s|$)/],
+  ["npm", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
+  ["yarn", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
+  ["pnpm", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
+  ["python", /^(?:-m\s+[\w.-]+(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/],
+  ["python3", /^(?:-m\s+[\w.-]+(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/],
+  ["pytest", /^(?:-v|--verbose|-x|--tb=[\w-]+|-k\s+[\w:-]+|[\w./-]+\.py|tests\/?)$/],
+  ["node", /^(?:--version|--help|scripts\/[\w./-]+\.(?:mjs|js)|[\w./-]+\.(?:mjs|js))$/],
 
   // Git read-only operations
-  ["git", /^(status|log|diff|show|branch|rev-parse|ls-files|ls-tree)(?:\s|$)/],
+  [
+    "git",
+    /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+[\w./=-]+)*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
+  ],
 
   // File operations (read-only)
-  ["cat", /^(\S+)$/],
-  ["head", /^(-n\s+\d+|\S+)$/],
-  ["tail", /^(-n\s+\d+|\S+)$/],
-  ["ls", /^(-la|-la\s+\S+|\S+)$/],
-  ["find", /^(\S+)(?:\s|$)/],
-  ["wc", /^(-l|\S+)(?:\s|$)/],
-  ["grep", /^(-\w+|\S+)(?:\s|$)/],
+  ["cat", /^[\w./-]+$/],
+  ["head", /^(?:-n\s+\d+\s+[\w./-]+|[\w./-]+)$/],
+  ["tail", /^(?:-n\s+\d+\s+[\w./-]+|[\w./-]+)$/],
+  ["ls", /^(?:-la(?:\s+[\w./-]+)?|[\w./-]+)$/],
+  ["wc", /^(?:-l\s+[\w./-]+|[\w./-]+)$/],
+  ["grep", /^(?:-\w+\s+[\w.-]+\s+[\w./-]+|[\w.-]+\s+[\w./-]+)$/],
 
   // Environment info
-  ["echo", /^(.*)$/],
+  ["echo", /^[\w .:/-]*$/],
   ["pwd", null],
-  ["which", /^(\S+)$/],
+  ["which", /^[\w.-]+$/],
   ["date", null],
   ["uname", /^(-a)?$/],
   ["env", null],
 ];
+
+const SHELL_CONTROL_OPERATOR_PATTERN = /(?:&&|\|\||[;&|<>])/;
 
 // Dangerous patterns that are always blocked (defense in depth)
 const ALWAYS_BLOCKED_PATTERNS = [
@@ -327,6 +329,13 @@ export function evaluateBashCommand(
 
   const compact = command.replace(/\\\n/g, "\n");
 
+  if (SHELL_CONTROL_OPERATOR_PATTERN.test(compact)) {
+    return {
+      block: true,
+      reason: `Autoresearch policy: shell control operators are not allowed: ${command}`,
+    };
+  }
+
   // Check always-blocked patterns first (defense in depth)
   for (const pattern of ALWAYS_BLOCKED_PATTERNS) {
     if (pattern.test(compact)) {
@@ -371,7 +380,7 @@ export function evaluateBashCommand(
     return { block: true, reason: `Autoresearch policy: command not in whitelist: ${cmdName}` };
   }
 
-  // Validate arguments against pattern
+  // Validate the full argument string against the command allowlist pattern.
   const [, argPattern] = whitelistEntry;
   if (argPattern && cmdArgs.length > 0) {
     if (!argPattern.test(cmdArgs)) {

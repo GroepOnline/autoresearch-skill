@@ -13,9 +13,6 @@ import { logger } from "./logger.js";
 // Cache parsed state while invalidating on source artifact changes.
 const stateCache = new Map<string, { state: ArState; signature: string }>();
 
-// Promise-based locks to prevent concurrent parsing of the same JSONL
-const parseLocks = new Map<string, Promise<ArState>>();
-
 // Maximum JSONL file size (10MB) to prevent memory exhaustion
 const MAX_JSONL_SIZE = 10 * 1024 * 1024;
 
@@ -25,10 +22,8 @@ const MAX_JSONL_LINES = 10000;
 export function clearStateCache(cwd?: string): void {
   if (cwd) {
     stateCache.delete(cwd);
-    parseLocks.delete(cwd);
   } else {
     stateCache.clear();
-    parseLocks.clear();
   }
 }
 
@@ -135,19 +130,6 @@ export function readState(cwd: string): ArState {
   const cached = stateCache.get(cwd);
   if (cached && cached.signature === signature) {
     return cached.state;
-  }
-
-  // Check if there's already a parse in progress for this cwd
-  const existingLock = parseLocks.get(cwd);
-  if (existingLock) {
-    // Wait for the existing parse to complete, then return cached result
-    // This is a sync function so we can't actually await, but we return the cached state
-    // which will be updated by the other call. If the lock exists but cache is stale,
-    // we proceed with parsing (race condition is acceptable - both will parse same data)
-    const cachedResult = stateCache.get(cwd);
-    if (cachedResult && cachedResult.signature === signature) {
-      return cachedResult.state;
-    }
   }
 
   const p = paths(cwd);
