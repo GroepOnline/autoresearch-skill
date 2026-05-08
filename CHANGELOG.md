@@ -50,6 +50,13 @@ All notable changes to the Autoresearch Skill project.
 - Improved visual consistency across all UI elements with enhanced emoji icons and structured layouts
 - Expanded statistics calculation for deeper insights into autoresearch performance
 
+### Documentation
+- Moved AGENTS.md, AUDIT.md, E2E_TESTING.md, and knowledge.md to docs/ directory
+- Updated README.md with new commands and dashboard documentation
+- Updated SKILL.md with new commands
+- Updated package.json files array to reflect new documentation structure
+- Updated test references to moved documentation files
+
 ## [1.1.0] — 2026-05-08
 
 ### Added

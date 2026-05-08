@@ -129,15 +129,15 @@ test("files array includes docs/ directory", () => {
   assert.ok(files.includes("docs/"), `Expected "docs/" in files array`);
 });
 
-test("files array includes AUDIT.md", () => {
+test("files array includes AUDIT.md via docs/ directory", () => {
   const files = pkg["files"] as string[];
-  assert.ok(files.includes("AUDIT.md"), `Expected "AUDIT.md" in files array`);
+  assert.ok(files.includes("docs/"), `Expected "docs/" in files array to include AUDIT.md`);
 });
 
 test("files array retains pre-existing entries", () => {
   const files = pkg["files"] as string[];
   // These entries existed before the PR and must not have been removed.
-  const retained = ["extensions/", "SKILL.md", "README.md", "LICENSE"];
+  const retained = ["extensions/", "skills/", "README.md", "LICENSE"];
   for (const entry of retained) {
     assert.ok(files.includes(entry), `Expected pre-existing file entry "${entry}" to still be present`);
   }

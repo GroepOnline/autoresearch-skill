@@ -44,7 +44,7 @@ Manual testing of the autoresearch extension is time-consuming and error-prone. 
 - ALWAYS verify extension is loaded before testing
 - ALWAYS clean up test artifacts after testing
 - ALWAYS use isolated test projects to avoid affecting real work
-- See E2E_TESTING.md for detailed session management guidelines
+- See docs/E2E_TESTING.md for detailed session management guidelines
 
 ## Artifact Layout & Cleanup
 
@@ -292,7 +292,7 @@ Success rate: {percentage}%
 7. **State file corruption**: Verify JSONL writing logic
 8. **Test artifacts remaining**: Clean up test directories after testing
 9. **Git state issues**: Always use isolated test projects
-10. See E2E_TESTING.md for detailed troubleshooting
+10. See docs/E2E_TESTING.md for detailed troubleshooting
 
 ## Final Checklist
 

@@ -55,7 +55,7 @@ For npm packaging:
 npm ci
 npm run validate
 npm run package
-pi install ./dist/pi-autoresearch-1.0.0.tgz
+pi install ./dist/pi-autoresearch-1.2.0.tgz
 ```
 
 ## Pi resources
@@ -81,9 +81,26 @@ pi install ./dist/pi-autoresearch-1.0.0.tgz
 /autoresearch ralph [max_runs] [max_minutes]
 /autoresearch pause
 /autoresearch resume
-/autoresearch dashboard
+/autoresearch dashboard [--fullscreen]
 /autoresearch validate
+/autoresearch finalize [--archive]
+/autoresearch quit
 ```
+
+### Dashboard
+
+The `/autoresearch dashboard` command shows a standard dashboard with performance summary and recent results. Use `--fullscreen` or `-f` for an ultra-extended 10-pane dashboard with:
+
+- **Session Information**: Name, metric, unit, creation date, status, and momentum tracking
+- **Performance Overview**: Total runs, kept/discarded/crashed counts with visual progress bars, min/max metrics
+- **Success Analytics**: Success/improvement rates with progress bars, recent trend, streak tracking with emoji, consistency/volatility metrics
+- **Performance Trend Chart**: ASCII line chart showing last 25 runs with visual performance trends
+- **Time-Series Analysis**: Last 5/10 run averages, total improvement, improvement per run, period comparisons
+- **Results History**: Enhanced table with last 15 results, status indicators, delta calculations
+- **Decision Analysis**: Total/keep/discard/stop decisions, recent decision history with reasons
+- **Command Reference**: Complete list of available autoresearch commands
+- **Statistics Summary**: Total decisions, parse errors, ideas file presence, data quality indicators
+- **System Health Status**: Overall health score with progress bar, data integrity, stability, progress indicators
 
 ### Modes
 

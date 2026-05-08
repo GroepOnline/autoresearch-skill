@@ -39,9 +39,7 @@
     "types/",
     "LICENSE",
     "CHANGELOG.md",
-    "README.md",
-    "AUDIT.md",
-    "SKILL.md"
+    "README.md"
   ],
   "pi": {
     "extensions": [
