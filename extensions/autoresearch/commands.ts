@@ -13,7 +13,7 @@ import {
 } from "./policy.js";
 import { ensureArtifactsLayout, parseStartBudgets, paths, readState } from "./state.js";
 import type { ArConfig, ArState } from "./types.js";
-import { dashboardRows, footerText, statusText } from "./ui.js";
+import { dashboardRows, dashboardRowsFullscreen, footerText, statusText } from "./ui.js";
 
 export interface StartPrereqResult {
   state: ArState;
@@ -26,7 +26,7 @@ export function registerAutoresearchCommand(
 ): void {
   pi.registerCommand("autoresearch", {
     description:
-      "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate | finalize [--archive]",
+      "Autoresearch: status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard [--fullscreen] | validate | finalize [--archive] | quit",
 
     getArgumentCompletions: (prefix: string) => {
       const subs = [
@@ -39,6 +39,7 @@ export function registerAutoresearchCommand(
         "dashboard",
         "validate",
         "finalize",
+        "quit",
       ];
       return subs.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
     },
@@ -91,8 +92,15 @@ export function registerAutoresearchCommand(
             ctx.ui.notify("Geen actieve sessie.", "warning");
             return;
           }
-          ctx.ui.setWidget("autoresearch", dashboardRows(state));
-          ctx.ui.notify("Dashboard bijgewerkt — widget boven de editor.", "info");
+          const isFullscreen = rest.includes("--fullscreen") || rest.includes("-f");
+          const rows = isFullscreen ? dashboardRowsFullscreen(state) : dashboardRows(state);
+          ctx.ui.setWidget("autoresearch", rows);
+          ctx.ui.notify(
+            isFullscreen
+              ? "📺 Fullscreen dashboard bijgewerkt — widget boven de editor."
+              : "Dashboard bijgewerkt — widget boven de editor.",
+            "info"
+          );
           return;
         }
 
@@ -294,6 +302,15 @@ export function registerAutoresearchCommand(
           return;
         }
 
+        case "quit": {
+          storeLoop(null);
+          pi.appendEntry("autoresearch-loop", null);
+          const state = readState(ctx.cwd);
+          ctx.ui.setStatus("autoresearch", footerText(state));
+          ctx.ui.notify("🚪 Autoresearch loop gestopt. Gebruik /autoresearch start of /autoresearch ralph om opnieuw te beginnen.", "info");
+          return;
+        }
+
         case "start": {
           const prereq = ensureStartPrereqs(ctx.cwd, p);
           if (prereq.blockMsg) {
@@ -386,7 +403,7 @@ export function registerAutoresearchCommand(
 
         default:
           ctx.ui.notify(
-            `Onbekend subcommando: '${sub}'\n\nGebruik:\n  status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard | validate | finalize`,
+            `Onbekend subcommando: '${sub}'\n\nGebruik:\n  status | new <goal> | start [runs] [min] | ralph [runs] [min] | pause | resume | dashboard [--fullscreen] | validate | finalize [--archive] | quit`,
             "warning"
           );
       }

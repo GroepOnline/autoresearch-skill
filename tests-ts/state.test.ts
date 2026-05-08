@@ -59,7 +59,7 @@ test("readState summarizes baseline, keep decisions, and footer text", () => {
   assert.equal(state.bestMetric, 91);
   assert.equal(state.bestRun, 2);
   assert.match(footerText(state), /best:91ms/);
-  assert.match(statusText(state), /Autoresearch: optimize-loop/);
+  assert.match(statusText(state), /Session: optimize-loop/);
 
   const rows = dashboardRows(state);
   assert.ok(rows.some((row) => row.includes("tiny simplification")));

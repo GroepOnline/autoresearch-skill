@@ -2,6 +2,54 @@
 
 All notable changes to the Autoresearch Skill project.
 
+## [1.2.0] — 2026-05-08
+
+### Added
+
+#### Commands
+- **Quit command** — New `/autoresearch quit` command to immediately stop the autoresearch loop and clear loop state
+- **Ultra-extended fullscreen dashboard** — New `/autoresearch dashboard --fullscreen` (or `-f`) option with 10 comprehensive panes
+
+#### UI Improvements
+- **Ultra-extended 10-pane fullscreen dashboard** — Massive enhancement with organized sections:
+  - **Pane 1: Session Information** — Name, metric, unit, creation date, status, and momentum tracking
+  - **Pane 2: Performance Overview** — Total runs, kept/discarded/crashed counts with visual progress bars, min/max metrics
+  - **Pane 3: Success Analytics** — Success/improvement rates with progress bars, recent trend, streak tracking with emoji, consistency/volatility metrics
+  - **Pane 4: Performance Trend Chart** — ASCII line chart showing last 25 runs with visual performance trends
+  - **Pane 5: Time-Series Analysis** — Last 5/10 run averages, total improvement, improvement per run, period comparisons
+  - **Pane 6: Results History** — Enhanced table with last 15 results, status indicators, delta calculations
+  - **Pane 7: Decision Analysis** — Total/keep/discard/stop decisions, recent decision history with reasons
+  - **Pane 8: Command Reference** — Complete list of available autoresearch commands
+  - **Pane 9: Statistics Summary** — Total decisions, parse errors, ideas file presence, data quality indicators
+  - **Pane 10: System Health Status** — Overall health score with progress bar, data integrity, stability, progress indicators
+
+#### Advanced Analytics
+- **Enhanced statistics engine** — Expanded `calculateStatistics()` function with 20+ metrics:
+  - Success/improvement/crash/discard rates
+  - Average/median/std deviation metrics
+  - Min/max metric tracking
+  - Recent 5/10 run averages
+  - Total and average improvement per run
+  - Momentum calculation (Strong Up/Gaining/Losing/Stable)
+  - Consistency score (inverse coefficient of variation)
+  - Volatility index (std dev relative to range)
+  - Best and current keep streaks
+  - Recent trend analysis (Improving/Declining/Stable)
+
+#### Visual Enhancements
+- **ASCII chart generation** — `generateAsciiChart()` function creates visual line charts for performance trends
+- **Progress bar visualization** — `generateProgressBar()` function creates visual progress bars for percentages
+- **Enhanced emoji integration** — 🔥 for best streak, ⚡ for current streak, 🚀 for strong momentum, 📈/📉 for trends
+- **Visual status indicators** — ✓/✗ for boolean states, health scores with progress bars
+- **Professional box-drawing layout** — Consistent pane separation with Unicode box characters
+
+### Changed
+- Updated command descriptions to include new `--fullscreen` option for ultra-extended dashboard
+- Updated help text to reflect new quit command and ultra-extended dashboard
+- Enhanced all dashboard layouts to provide comprehensive analytics at a glance
+- Improved visual consistency across all UI elements with enhanced emoji icons and structured layouts
+- Expanded statistics calculation for deeper insights into autoresearch performance
+
 ## [1.1.0] — 2026-05-08
 
 ### Added

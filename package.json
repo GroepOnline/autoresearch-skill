@@ -1,6 +1,6 @@
 {
   "name": "pi-autoresearch",
-  "version": "1.1.0",
+  "version": "1.2.0",
   "description": "Pi extension and Agent Skill for bounded, benchmark-driven autoresearch loops in code repositories.",
   "type": "module",
   "license": "MIT",

@@ -29,8 +29,8 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as Rec
 // Version and publishability
 // ---------------------------------------------------------------------------
 
-test("package version is 1.0.0", () => {
-  assert.equal(pkg["version"], "1.0.0");
+test("package version is 1.2.0", () => {
+  assert.equal(pkg["version"], "1.2.0");
 });
 
 test("package is not marked private (publishable)", () => {
