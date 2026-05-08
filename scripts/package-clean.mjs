@@ -17,7 +17,7 @@ function run(command, args, options = {}) {
   if (result.status !== 0) {
     throw new Error(result.stderr || `${command} ${args.join(" ")} failed`);
   }
-  return result.stdout.trim();
+  return typeof result.stdout === "string" ? result.stdout.trim() : "";
 }
 
 try {

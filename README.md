@@ -1,74 +1,82 @@
-# Autoresearch Skill
+# Pi Autoresearch Extension
 
-Bounded, benchmark-driven optimization loops for Pi Coding Agent and repository experiments.
+A full **Pi package** for bounded, benchmark-driven repository optimization. It ships both:
 
-Autoresearch helps an agent test one hypothesis at a time, compare measured results against a baseline and current best, keep only meaningful improvements, and preserve crash-safe state across long sessions.
+- a native Pi extension with commands, tools, lifecycle hooks, context injection, and safety guards;
+- an Agent Skill under `skills/autoresearch/` for progressive workflow guidance.
 
-## What this repository contains
+Autoresearch helps a coding agent run controlled optimization experiments: establish a baseline, test one hypothesis, benchmark repeatedly, keep only meaningful improvements, and stop when budget, safety, or quality gates are hit.
 
-- `SKILL.md` - single canonical ChatGPT/Pi skill entrypoint.
-- `extensions/autoresearch/index.ts` - canonical Pi TUI plugin for `/autoresearch` commands.
-- `extension.ts` - compatibility shim for older symlink installs.
-- `agents/openai.yaml` - ChatGPT skill UI metadata.
-- `references/` - detailed protocols for state, benchmark decisions, safety, Pi extension behavior, and examples.
-- `scripts/` - deterministic helpers for metric parsing, JSONL validation, decisions, and dashboard generation.
-- `tests/` - script-level regression tests.
-
-## Core guarantees
-
-- Append-only JSONL state is the source of truth.
-- Benchmarks use median samples and noise checks instead of single-run timing.
-- Keep/discard decisions compare against the current best result.
-- Git operations are bounded and avoid destructive `reset --hard HEAD~` patterns.
-- Loops stop at explicit budgets, unsafe git state, corrupt state, noisy metrics, or repeated failed hypotheses.
-
-## Runtime files created in target projects
+## Package layout
 
 ```text
-autoresearch.md
-autoresearch.jsonl
-AUTORESEARCH_STATE.json
-autoresearch-dashboard.md
-experiments/worklog.md
-.autoresearch-off
+pi-autoresearch/
+├── package.json                         # Pi package manifest
+├── extensions/autoresearch/             # Native Pi extension
+│   ├── index.ts                         # Extension entrypoint
+│   ├── commands.ts                      # /autoresearch command router
+│   ├── tools.ts                         # LLM-callable autoresearch tools
+│   ├── policy.ts                        # Git, scope, bash and mutation guards
+│   ├── state.ts                         # JSONL parsing, snapshots, context injection
+│   ├── loop.ts                          # Assisted/Ralph continuation policy
+│   └── ui.ts                            # Status/footer/dashboard text
+├── skills/autoresearch/SKILL.md         # Pi/Agent Skill entrypoint
+├── references/                          # Protocol, benchmark and safety references
+├── scripts/autoresearch.py              # Deterministic helper CLI
+├── tests/                               # Python helper tests
+└── tests-ts/                            # Extension behavior tests
 ```
 
-These runtime files are ignored in this repository by default.
+`extension.ts` remains as a compatibility shim for older direct-extension installs.
 
-## Pi usage
+## Install
 
-Install as a Pi package:
+From GitHub:
 
 ```bash
-pi install git:https://github.com/GroepChef/autoresearch-skill
+pi install git:https://github.com/OnlineChef/autoresearch-skill
 ```
 
-For local development:
+From a local checkout:
 
 ```bash
-pi install /path/to/autoresearch-skill
-# or for one-off testing
-pi -e /path/to/autoresearch-skill/extensions/autoresearch/index.ts
+pi install /path/to/pi-autoresearch
 ```
 
-Compatibility skill-only setup remains possible:
-
-```yaml
-skills:
-  - path: GroepChef/autoresearch-skill
-```
-
-Compatibility symlink for older extension installs:
+For quick one-off extension testing:
 
 ```bash
-ln -s /path/to/autoresearch-skill/extension.ts ~/.pi/agent/extensions/autoresearch.ts
+pi -e /path/to/pi-autoresearch/extensions/autoresearch/index.ts
 ```
 
-Commands:
+For npm packaging:
+
+```bash
+npm ci
+npm run validate
+npm run package
+pi install ./dist/pi-autoresearch-1.0.0.tgz
+```
+
+## Pi resources
+
+`package.json` declares the package as a Pi package:
+
+```json
+{
+  "keywords": ["pi-package", "pi-extension", "pi-skill"],
+  "pi": {
+    "extensions": ["./extensions/autoresearch/index.ts"],
+    "skills": ["./skills"]
+  }
+}
+```
+
+## Commands
 
 ```text
 /autoresearch status
-/autoresearch new <goal>   # auto-switches to an isolated autoresearch/* branch when possible
+/autoresearch new <goal>
 /autoresearch start [max_runs] [max_minutes]
 /autoresearch ralph [max_runs] [max_minutes]
 /autoresearch pause
@@ -79,48 +87,62 @@ Commands:
 
 ### Modes
 
-- **Assisted** (`/autoresearch start`) — Full autonomous loop with user oversight. Each run gets context injection + budget; user approves continuation.
-- **Ralph Wiggum** (`/autoresearch ralph`) — Fully autonomous naive-explorer mode. Simplest hypotheses first, max ~10 line diffs, runs until budget or safety stop. Named after the blissfully simple character.
+- **Assisted mode**: `/autoresearch start` starts a bounded loop with user-visible context injection and budget tracking.
+- **Ralph mode**: `/autoresearch ralph` starts an autonomous naive-explorer mode for tiny, simple hypotheses. It limits diff size and stops aggressively on safety or quality failures.
 
-### Custom Tools
+## Tools exposed to Pi
 
 | Tool | Purpose |
-|------|---------|
-| `autoresearch_state` | Read and validate JSONL state (config, runs, best, baseline) |
-| `autoresearch_metric` | Parse METRIC lines from benchmark output, compute median + noise CV |
-| `autoresearch_decide` | Policy-driven keep/discard/stop decision against current best |
-| `autoresearch_dashboard` | Generate markdown dashboard from JSONL |
+| --- | --- |
+| `autoresearch_state` | Read and validate `autoresearch.jsonl`, config, baseline, best result and run history. |
+| `autoresearch_metric` | Parse `METRIC name=value direction=lower|higher` benchmark output and calculate summary/noise data. |
+| `autoresearch_decide` | Decide `baseline`, `keep`, `discard`, or `stop` using metric direction, effect-size threshold, noise floor and correctness result. |
+| `autoresearch_dashboard` | Generate a markdown dashboard from append-only state. |
 
-### Stop Conditions
+## Runtime files created in target repositories
 
-The loop automatically stops on:
+```text
+autoresearch.md
+autoresearch.jsonl
+AUTORESEARCH_STATE.json
+autoresearch-dashboard.md
+autoresearch.ideas.md
+experiments/worklog.md
+experiments/summary-{timestamp}.md
+.autoresearch-off
+```
 
-- Budget exhausted (runs or minutes)
-- Explicit `stop` decision from `autoresearch_decide`
-- 5 consecutive discards (no progress being made)
-- Plateau — 10 runs without improvement
-- Diff-size violation (50 lines assisted, 10 lines Ralph mode), including post-run git diff audit so bash mutations cannot bypass scope checks
-- Pause sentinel (`.autoresearch-off`)
-- Corrupt JSONL state
-- Dirty git working tree at loop start, except autoresearch runtime files created by `/autoresearch new`
-- Not in an isolated git context (`autoresearch/*` branch or a git worktree)
-- Correctness test failures
-- Benchmark noise exceeding configured threshold
+These files are created in the target project, not in this package repository.
 
-### Key Features
+## Safety model
 
-- **Experiment provenance** — Git commit hash auto-captured per metric measurement
-- **Noise-adaptive sampling** — CV (coefficient of variation) computed; warns when benchmark is too noisy
-- **Multi-metric tracking** — Secondary metrics shown in context as sub-rows
-- **Snapshot generation** — `AUTORESEARCH_STATE.json` written atomically on every context injection
-- **Run duration tracking** — Per-run elapsed time shown in context
-- **Stop summary reports** — `experiments/summary-{ts}.md` generated on loop stop
-- **Context injection** — Auto-generated "Recently Tried" table + stats in `before_agent_start`
-- **Deduplication hints** — Last 5 unique descriptions shown to prevent repeated hypotheses
-- **Session persistence** — Consecutive discard and plateau counters survive session restarts via JSONL re-derivation
-- **Strict start gate** — `/autoresearch start` refuses unresolved placeholders, empty scope, missing config, unconfigured benchmarks, non-runtime dirty files, and non-isolated git contexts
+Autoresearch is intentionally bounded. It stops or blocks continuation on:
 
-## Helper scripts
+- corrupt or oversized JSONL state;
+- missing or unresolved experiment contract;
+- dirty git state outside autoresearch runtime artifacts;
+- non-isolated git context unless `/autoresearch new` can create an `autoresearch/*` branch;
+- protected/off-limits path writes;
+- destructive git or shell commands;
+- post-run diff violations, including shell-created files outside scope;
+- failed correctness checks;
+- noisy benchmark results;
+- exhausted run/time budget;
+- five consecutive discards;
+- plateau after ten runs without improvement;
+- explicit `.autoresearch-off` pause sentinel.
+
+## Benchmark contract
+
+The default generated benchmark script is `./autoresearch.sh`. It must print at least one parseable metric line:
+
+```text
+METRIC run_seconds=1.234 direction=lower
+```
+
+For stable decisions, use multiple samples, compare against the current best, and treat correctness as a hard guardrail.
+
+## Helper CLI
 
 ```bash
 python scripts/autoresearch.py parse-metrics benchmark.out
@@ -129,13 +151,30 @@ python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 
 python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```
 
-## Validation
+## Validate
 
 ```bash
 npm ci
-npm test
-npm run typecheck
+npm run validate
 ```
+
+The validation suite runs:
+
+- Python helper tests;
+- TypeScript extension behavior tests;
+- ESLint;
+- TypeScript typecheck.
+
+## Release checklist
+
+```bash
+npm ci
+npm run validate
+npm run package
+npm publish --access public
+```
+
+Before publishing, verify the repository URL, package owner, changelog and npm permissions.
 
 ## License
 

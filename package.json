@@ -1,26 +1,38 @@
 {
   "name": "pi-autoresearch",
-  "version": "0.2.0",
-  "private": true,
+  "version": "1.0.0",
+  "description": "Pi extension and Agent Skill for bounded, benchmark-driven autoresearch loops in code repositories.",
   "type": "module",
+  "license": "MIT",
+  "author": "OnlineChef",
+  "homepage": "https://github.com/OnlineChef/autoresearch-skill#readme",
+  "bugs": {
+    "url": "https://github.com/OnlineChef/autoresearch-skill/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/OnlineChef/autoresearch-skill.git"
+  },
   "keywords": [
     "pi-package",
     "pi-extension",
+    "pi-skill",
+    "agent-skill",
     "autoresearch",
-    "benchmark"
+    "benchmark",
+    "optimization",
+    "coding-agent"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/GroepChef/autoresearch-skill.git"
-  },
   "engines": {
     "node": ">=18"
   },
   "files": [
     "extension.ts",
     "extensions/",
+    "skills/",
     "agents/",
     "references/",
+    "docs/",
     "scripts/*.py",
     "scripts/*.mjs",
     "scripts/*.sh",
@@ -28,6 +40,7 @@
     "LICENSE",
     "CHANGELOG.md",
     "README.md",
+    "AUDIT.md",
     "SKILL.md"
   ],
   "pi": {
@@ -35,7 +48,7 @@
       "./extensions/autoresearch/index.ts"
     ],
     "skills": [
-      "."
+      "./skills"
     ]
   },
   "scripts": {
@@ -47,6 +60,7 @@
     "lint:fix": "eslint extensions/**/*.ts --fix",
     "format": "prettier --write \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
     "format:check": "prettier --check \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
+    "package": "node scripts/package-clean.mjs",
     "package:clean": "node scripts/package-clean.mjs"
   },
   "devDependencies": {
