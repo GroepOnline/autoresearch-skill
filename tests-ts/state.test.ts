@@ -51,6 +51,24 @@ test("readState reports JSONL parse errors instead of hiding them", () => {
   assert.match(statusText(state), /bevat fouten/);
 });
 
+test("readState rejects decisions that do not follow a result", () => {
+  const cwd = tempProject();
+  writeFileSync(paths(cwd).jsonl, [
+    JSON.stringify({
+      type: "config",
+      schema_version: 1,
+      name: "optimize-loop",
+      metric: "latency_ms",
+      direction: "lower",
+      created_at: "2026-05-06T12:00:00Z",
+    }),
+    JSON.stringify({ type: "decision", run: 1, action: "keep", reason: "missing result", timestamp: "t" }),
+  ].join("\n") + "\n");
+
+  const state = readState(cwd);
+  assert.ok(state.parseErrors.some(error => error.includes("no preceding result")));
+});
+
 test("parseStartBudgets defaults invalid values and accepts explicit values", () => {
   assert.deepEqual(parseStartBudgets([]), { maxRuns: 5, maxMinutes: 30 });
   assert.deepEqual(parseStartBudgets(["12", "45"]), { maxRuns: 12, maxMinutes: 45 });

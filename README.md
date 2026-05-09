@@ -6,8 +6,9 @@ Autoresearch helps an agent test one hypothesis at a time, compare measured resu
 
 ## What this repository contains
 
-- `skills/autoresearch/SKILL.md` - canonical Pi skill entrypoint.
-- `SKILL.md` - compatibility copy of the skill entrypoint.
+- `skills/pi-autoresearch/SKILL.md` - canonical Pi skill entrypoint.
+- `skills/autoresearch/SKILL.md` - compatibility alias for older installs.
+- `SKILL.md` - package-root compatibility copy.
 - `extensions/autoresearch/index.ts` - canonical Pi TUI plugin for `/autoresearch` commands.
 - `extension.ts` - compatibility shim for older symlink installs.
 - `agents/openai.yaml` - ChatGPT skill UI metadata.

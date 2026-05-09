@@ -43,7 +43,9 @@ function cv(values: number[]): number {
 function captureCommit(cwd: string): string | null {
   try {
     return execSync("git rev-parse HEAD", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim() || null;
-  } catch {
+  } catch (error) {
+    // Git not available or not a git repo - log for debugging
+    console.error(`[autoresearch] Failed to capture git commit in ${cwd}:`, error);
     return null;
   }
 }
@@ -124,6 +126,17 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, ctx) {
+      // Input validation
+      if (!params || typeof params !== "object") {
+        throw new Error("autoresearch_metric: params must be an object");
+      }
+      if (typeof params.output !== "string" || params.output.trim() === "") {
+        throw new Error("autoresearch_metric: output parameter must be a non-empty string");
+      }
+      if (params.primary_metric !== undefined && typeof params.primary_metric !== "string") {
+        throw new Error("autoresearch_metric: primary_metric must be a string if provided");
+      }
+
       const metrics = parseMetricLines(params.output);
       if (metrics.length === 0) {
         throw new Error("No METRIC lines found in output. Benchmark must print at least one: METRIC name=value direction=lower|higher");
@@ -206,6 +219,26 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
+      // Input validation
+      if (!params || typeof params !== "object") {
+        throw new Error("autoresearch_decide: params must be an object");
+      }
+      if (typeof params.candidate !== "number" || !Number.isFinite(params.candidate)) {
+        throw new Error("autoresearch_decide: candidate must be a finite number");
+      }
+      if (params.best !== undefined && params.best !== null && !Number.isFinite(params.best)) {
+        throw new Error("autoresearch_decide: best must be a finite number if provided");
+      }
+      if (params.direction !== "lower" && params.direction !== "higher") {
+        throw new Error("autoresearch_decide: direction must be 'lower' or 'higher'");
+      }
+      if (params.min_effect_size_pct !== undefined && (typeof params.min_effect_size_pct !== "number" || !Number.isFinite(params.min_effect_size_pct))) {
+        throw new Error("autoresearch_decide: min_effect_size_pct must be a finite number if provided");
+      }
+      if (params.noise_floor_pct !== undefined && (typeof params.noise_floor_pct !== "number" || !Number.isFinite(params.noise_floor_pct))) {
+        throw new Error("autoresearch_decide: noise_floor_pct must be a finite number if provided");
+      }
+
       const { candidate, best, direction, min_effect_size_pct = 3.0, noise_floor_pct = 0.0, tests_passed = true, noisy = false } = params;
 
       if (!Number.isFinite(candidate)) throw new Error("candidate must be a finite number");

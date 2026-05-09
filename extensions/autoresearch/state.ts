@@ -39,7 +39,7 @@ function normalizeResult(result: ArResult, config: ArConfig | null): NormalizedR
 
   return {
     run: result.run,
-    metricName: typeof result.metric === "string" ? result.metric : config ? metricName(config) : "metric",
+    metricName: typeof result.metric === "string" && result.metric.trim() ? result.metric : config ? metricName(config) : "metric",
     value,
     status: result.status ?? "measured",
     description: result.description ?? "",
@@ -70,6 +70,69 @@ function emptyState(cwd: string): ArState {
   };
 }
 
+function isNumericArray(value: unknown): value is number[] {
+  return Array.isArray(value) && value.length > 0 && value.every(item => typeof item === "number" && Number.isFinite(item));
+}
+
+function writeSnapshotAtomic(snapshotPath: string, data: unknown): void {
+  const tempPath = `${snapshotPath}.${process.pid}.${Date.now()}.tmp`;
+  const payload = `${JSON.stringify(data, null, 2)}\n`;
+  fs.writeFileSync(tempPath, payload, "utf-8");
+  fs.renameSync(tempPath, snapshotPath);
+}
+
+function buildSnapshot(cwd: string, state: ArState): Record<string, unknown> | null {
+  const config = state.config;
+  if (!config) return null;
+
+  const baselineDecision = state.decisions.find(d => d.action === "baseline");
+  const baselineResult = baselineDecision ? state.results.find(result => result.run === baselineDecision.run) : state.results[0] ?? null;
+
+  return {
+    session: config.name,
+    timestamp: new Date().toISOString(),
+    config: {
+      name: config.name,
+      metric: metricName(config),
+      direction: direction(config),
+      unit: metricUnit(config),
+      max_runs: config.max_runs,
+      max_minutes: config.max_minutes,
+      min_effect_size_pct: config.min_effect_size_pct,
+      noise_floor_pct: config.noise_floor_pct,
+      max_consecutive_discards: config.max_consecutive_discards,
+      max_runs_without_improvement: config.max_runs_without_improvement,
+      max_diff_lines_assisted: config.max_diff_lines_assisted,
+      max_diff_lines_ralph: config.max_diff_lines_ralph,
+    },
+    baseline: baselineResult
+      ? {
+          run: baselineResult.run,
+          value: baselineResult.value,
+        }
+      : null,
+    best: state.bestRun !== null && state.bestMetric !== null
+      ? {
+          run: state.bestRun,
+          value: state.bestMetric,
+        }
+      : null,
+    counts: {
+      runs: state.runCount,
+      kept: state.keptCount,
+      discarded: state.discardedCount,
+      crashed: state.crashedCount,
+    },
+    latestErrors: state.parseErrors.slice(-5),
+    resumeInstruction: `Review autoresearch.jsonl and continue from run ${state.runCount + 1}`,
+    lastDecisions: state.decisions.slice(-5).map(d => ({
+      run: d.run,
+      action: d.action,
+      reason: d.reason,
+    })),
+  };
+}
+
 export function readState(cwd: string): ArState {
   const p = paths(cwd);
   const state = emptyState(cwd);
@@ -77,7 +140,9 @@ export function readState(cwd: string): ArState {
 
   const resultByRun = new Map<number, NormalizedResult>();
   const seenActions = new Map<number, ArDecision["action"]>();
+  const seenResultRuns = new Set<number>();
   let sawNonEmptyLine = false;
+  let sawConfig = false;
 
   fs.readFileSync(p.jsonl, "utf-8").split("\n").forEach((raw, index) => {
     const line = raw.trim();
@@ -98,20 +163,30 @@ export function readState(cwd: string): ArState {
     }
 
     const typed = event as { type?: string };
+
     if (typed.type === "config") {
+      sawConfig = true;
       const config = event as ArConfig;
-      if (!config.name) state.parseErrors.push(`line ${index + 1}: config.name is required`);
-      if (!(config.metric ?? config.metricName)) state.parseErrors.push(`line ${index + 1}: config.metric is required`);
-      if (!(config.direction ?? config.bestDirection)) state.parseErrors.push(`line ${index + 1}: config.direction must be lower or higher`);
-      if ((config.direction ?? config.bestDirection) && !["lower", "higher"].includes(direction(config))) state.parseErrors.push(`line ${index + 1}: config.direction must be lower or higher`);
+      if (config.schema_version !== 1) state.parseErrors.push(`line ${index + 1}: config.schema_version must be 1`);
+      if (typeof config.name !== "string" || config.name.trim() === "") state.parseErrors.push(`line ${index + 1}: config.name is required`);
+      if (typeof config.metric !== "string" || config.metric.trim() === "") state.parseErrors.push(`line ${index + 1}: config.metric is required`);
+      if (!Number.isFinite(config.created_at ? Date.parse(config.created_at) : Number.NaN)) state.parseErrors.push(`line ${index + 1}: config.created_at is required`);
+      if (config.direction !== "lower" && config.direction !== "higher") state.parseErrors.push(`line ${index + 1}: config.direction must be lower or higher`);
       state.config = config;
       state.currentSegment = config.segment ?? state.currentSegment;
       return;
     }
 
+    if (!sawConfig) {
+      state.parseErrors.push(`line ${index + 1}: non-config event before config`);
+    }
+
     if (typed.type === "decision") {
       const decision = event as ArDecision;
       if (!Number.isInteger(decision.run) || decision.run <= 0) state.parseErrors.push(`line ${index + 1}: decision.run must be a positive integer`);
+      if (!decision.reason || typeof decision.reason !== "string") state.parseErrors.push(`line ${index + 1}: decision.reason is required`);
+      if (typeof decision.timestamp !== "string" || decision.timestamp.trim() === "") state.parseErrors.push(`line ${index + 1}: decision.timestamp is required`);
+      if (!seenResultRuns.has(decision.run)) state.parseErrors.push(`line ${index + 1}: decision.run ${decision.run} has no preceding result`);
       if (!["keep", "discard", "baseline", "stop"].includes(decision.action)) state.parseErrors.push(`line ${index + 1}: invalid decision.action`);
       state.decisions.push(decision);
       seenActions.set(decision.run, decision.action);
@@ -119,13 +194,47 @@ export function readState(cwd: string): ArState {
     }
 
     if (typed.type === "result" || (event as ArResult).run !== undefined) {
-      const normalized = normalizeResult(event as ArResult, state.config);
+      const result = event as ArResult;
+      const run = result.run;
+      if (!Number.isInteger(run) || run <= 0) {
+        state.parseErrors.push(`line ${index + 1}: result.run must be a positive integer`);
+        return;
+      }
+      if (seenResultRuns.has(run)) {
+        state.parseErrors.push(`line ${index + 1}: duplicate result.run ${run}`);
+        return;
+      }
+      if (typeof result.metric !== "string" || result.metric.trim() === "") {
+        state.parseErrors.push(`line ${index + 1}: result.metric is required`);
+        return;
+      }
+      const value = resultValue(result);
+      if (value === null) {
+        state.parseErrors.push(`line ${index + 1}: result.value or result.median must be a finite number`);
+        return;
+      }
+      if (typeof result.timestamp !== "string" || result.timestamp.trim() === "") {
+        state.parseErrors.push(`line ${index + 1}: result.timestamp is required`);
+        return;
+      }
+      if (result.samples !== undefined && !isNumericArray(result.samples)) {
+        state.parseErrors.push(`line ${index + 1}: result.samples must be a non-empty numeric list`);
+        return;
+      }
+      if (result.status !== undefined && !["measured", "keep", "discard", "crash"].includes(result.status)) {
+        state.parseErrors.push(`line ${index + 1}: invalid result.status`);
+        return;
+      }
+
+      const normalized = normalizeResult(result, state.config);
       if (!normalized) {
         state.parseErrors.push(`line ${index + 1}: invalid result event`);
         return;
       }
+
       state.results.push(normalized);
       resultByRun.set(normalized.run, normalized);
+      seenResultRuns.add(normalized.run);
       if (["keep", "discard"].includes(normalized.status)) {
         seenActions.set(normalized.run, normalized.status as "keep" | "discard");
       }
@@ -189,6 +298,17 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
 
   let md = fs.readFileSync(p.context, "utf-8");
 
+  if (state.config) {
+    const snapshot = buildSnapshot(cwd, state);
+    if (snapshot) {
+      try {
+        writeSnapshotAtomic(p.snapshot, snapshot);
+      } catch (error) {
+        console.error(`[autoresearch] Failed to write snapshot to ${p.snapshot}:`, error);
+      }
+    }
+  }
+
   if (!state.config || state.runCount === 0) return md;
 
   const config = state.config;
@@ -236,29 +356,6 @@ export function buildContextInjection(cwd: string, state: ArState, lastRunDurati
     }
     md += `\n⚠️ **Baseer je volgende hypothese op wat al geprobeerd is — geen herhaling!**\n`;
   }
-
-  // ── Snapshot: write AUTORESEARCH_STATE.json ────────────────────────────
-  const snapshot = {
-    session: config.name,
-    timestamp: new Date().toISOString(),
-    metric: metricName(config),
-    direction: direction(config),
-    baseline: state.baselineMetric,
-    best: state.bestMetric,
-    bestRun: state.bestRun,
-    runs: state.runCount,
-    kept: state.keptCount,
-    discarded: state.discardedCount,
-    crashed: state.crashedCount,
-    lastDecisions: state.decisions.slice(-5).map(d => ({
-      run: d.run,
-      action: d.action,
-      reason: d.reason,
-    })),
-  };
-  try {
-    fs.writeFileSync(p.snapshot, JSON.stringify(snapshot, null, 2));
-  } catch { /* best-effort: don't block context injection on snapshot failure */ }
 
   md += `\n### Regels\n`;
   md += `- ÉÉN hypothese per run\n`;

@@ -5,6 +5,8 @@ description: run bounded, benchmark-driven optimization loops for pi coding agen
 
 # Autoresearch
 
+Canonical Pi entrypoint: `skills/pi-autoresearch/SKILL.md`.
+
 Use this skill to run controlled optimization research in a repository. The core pattern is: establish a baseline, test one hypothesis, measure with a repeatable benchmark, keep only meaningful improvements, record every decision, and stop when the configured budget or safety limits are reached.
 
 ## Pi Extension
@@ -26,7 +28,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 
 ## Start workflow
 
-1. Verify that the repository has a clean git state. Stop if there is uncommitted user work outside the autoresearch workspace.
+1. Verify that the repository has a clean git state. Stop if there are any uncommitted changes.
 2. Create or load `autoresearch.md`, `autoresearch.jsonl`, and `experiments/worklog.md`.
 3. Confirm the optimization target, primary metric, direction (`lower` or `higher`), files in scope, off-limits paths, and run budget.
 4. Establish a baseline with the same benchmark policy used for future runs.

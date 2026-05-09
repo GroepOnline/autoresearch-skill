@@ -2,6 +2,33 @@
 
 All notable changes to the Autoresearch Skill project.
 
+## [0.3.0] — 2026-05-09
+
+### Fixed - Critical Issues from Audit
+
+#### Dependency Management
+- **Pin peerDependency** - Changed `@mariozechner/pi-coding-agent` from `*` to `^0.74.0` to prevent breaking changes.
+
+#### State Management
+- **Eliminate global state** - Moved `currentMaxDiffLines` from module-level singleton to `LoopState.maxDiffLines` for proper session isolation.
+- **Add experiments cleanup** - Implemented automatic cleanup of old summary files (keep last 50, max 30 days).
+
+#### Error Handling
+- **Add proper logging** - Replaced all silent `catch { /* best-effort */ }` blocks with proper `console.error` logging for production debugging.
+- **Input validation** - Added comprehensive input validation to `autoresearch_metric` and `autoresearch_decide` tools with clear error messages.
+
+#### Security
+- **Security audit logging** - Added `.autoresearch-audit.jsonl` logging for all security blocks in tool_call guard.
+- **Tool call validation** - Enhanced `evaluateToolCall` with `maxDiffLines` parameter for session-specific diff size limits.
+
+#### Configuration
+- **Configurable thresholds** - Added `max_consecutive_discards`, `max_runs_without_improvement`, `max_diff_lines_assisted`, `max_diff_lines_ralph` to `ArConfig`.
+
+### Changed
+- Updated `LoopState` interface to include `maxDiffLines` field.
+- Updated test fixtures to include new required `maxDiffLines` field.
+- All catch blocks now log errors to stderr instead of silently swallowing them.
+
 ## [0.2.0] — Unreleased
 
 ### Added

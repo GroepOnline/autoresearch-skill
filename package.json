@@ -1,6 +1,6 @@
 {
   "name": "pi-autoresearch",
-  "version": "0.2.0",
+  "version": "0.3.0",
   "private": true,
   "type": "module",
   "keywords": [
@@ -33,7 +33,7 @@
       "./extensions/autoresearch/index.ts"
     ],
     "skills": [
-      "./skills/autoresearch"
+      "./skills/pi-autoresearch"
     ]
   },
   "scripts": {
@@ -48,7 +48,7 @@
     "typescript": "^5.7.0"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "*"
+    "@mariozechner/pi-coding-agent": "^0.74.0"
   },
   "peerDependenciesMeta": {
     "@mariozechner/pi-coding-agent": {

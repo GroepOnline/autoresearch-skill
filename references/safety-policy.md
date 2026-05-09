@@ -6,7 +6,7 @@ Autoresearch must be autonomous inside narrow boundaries, not unbounded or destr
 
 Stop immediately when any condition applies:
 
-- dirty git state outside the autoresearch workspace
+- any dirty git working tree
 - state file corruption
 - missing or failing baseline
 - benchmark output has no parseable primary metric
@@ -18,6 +18,8 @@ Stop immediately when any condition applies:
 - candidate diff includes secrets, credentials, tokens, or key material
 
 ## Git isolation
+
+Autoresearch requires a clean working tree before starting a loop.
 
 Avoid this pattern:
 

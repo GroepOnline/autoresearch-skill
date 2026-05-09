@@ -13,6 +13,7 @@ export interface LoopState {
   consecutiveDiscards: number;
   maxRunsWithoutImprovement: number;
   runsSinceLastImprovement: number;
+  maxDiffLines: number;
   lastRunTs?: number;
   lastRunDurationMs?: number;
   trackedRuns: number;

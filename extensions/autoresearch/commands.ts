@@ -4,7 +4,6 @@ import * as fs from "node:fs";
 import * as path from "node:path";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage } from "./loop.js";
-import { setMaxDiffLines } from "./policy.js";
 import { parseStartBudgets, paths, readState } from "./state.js";
 import { dashboardRows, footerText, statusText } from "./ui.js";
 
@@ -163,21 +162,22 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           if (blockMsg) { ctx.ui.notify(blockMsg, "error"); return; }
 
           const budgets = parseStartBudgets(rest);
+          const config = state.config;
           const loop: LoopState = {
             mode: "assisted",
             maxRuns: budgets.maxRuns,
             maxMinutes: budgets.maxMinutes,
             startedAt: Date.now(),
             runsAtStart: state.runCount,
-            maxConsecutiveDiscards: 5,
+            maxConsecutiveDiscards: config?.max_consecutive_discards ?? 5,
             consecutiveDiscards: 0,
-            maxRunsWithoutImprovement: 10,
+            maxRunsWithoutImprovement: config?.max_runs_without_improvement ?? 10,
             runsSinceLastImprovement: 0,
+            maxDiffLines: config?.max_diff_lines_assisted ?? 50,
             trackedRuns: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
-          setMaxDiffLines(50);
           ctx.ui.notify(`🚀 Autoresearch gestart (assisted) — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min.`, "info");
           pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, elapsedMinutes: 0, remainingMinutes: budgets.maxMinutes, shouldContinue: true }, state), { deliverAs: "followUp" });
           return;
@@ -190,21 +190,22 @@ export function registerAutoresearchCommand(pi: ExtensionAPI, storeLoop: (s: Loo
           if (blockMsg) { ctx.ui.notify(blockMsg, "error"); return; }
 
           const budgets = parseStartBudgets(rest.length ? rest : ["3", "20"]);
+          const config = state.config;
           const loop: LoopState = {
             mode: "ralph",
             maxRuns: budgets.maxRuns,
             maxMinutes: budgets.maxMinutes,
             startedAt: Date.now(),
             runsAtStart: state.runCount,
-            maxConsecutiveDiscards: 5,
+            maxConsecutiveDiscards: config?.max_consecutive_discards ?? 5,
             consecutiveDiscards: 0,
-            maxRunsWithoutImprovement: 10,
+            maxRunsWithoutImprovement: config?.max_runs_without_improvement ?? 10,
             runsSinceLastImprovement: 0,
+            maxDiffLines: config?.max_diff_lines_ralph ?? 10,
             trackedRuns: 0,
           };
           storeLoop(loop);
           pi.appendEntry("autoresearch-loop", loop);
-          setMaxDiffLines(10);
           ctx.ui.notify(`🐣 Ralph Wiggum mode — ${budgets.maxRuns} runs / ${budgets.maxMinutes} min. Simpelste hypotheses eerst.`, "info");
           pi.sendUserMessage(buildContinuationMessage(loop, { runNumber: state.runCount + 1, runsUsed: 0, remainingRuns: budgets.maxRuns, remainingMinutes: budgets.maxMinutes, elapsedMinutes: 0, shouldContinue: true }, state), { deliverAs: "followUp" });
           return;
@@ -230,7 +231,9 @@ function checkStartPrereqs(state: ReturnType<typeof readState>, p: ReturnType<ty
   // Check git working tree is clean (skip if not a git repo)
   try {
     const status = execSync("git status --porcelain", { cwd, encoding: "utf-8", stdio: ["pipe", "pipe", "pipe"] }).trim();
-    if (status) return "Git working tree is dirty. Commit of stash wijzigingen voordat je /autoresearch start.";
-  } catch { /* not a git repo — skip check */ }
+    if (status) return "Git working tree must be clean before /autoresearch start.";
+  } catch {
+    // Not a git repo - this is acceptable for non-git projects
+  }
   return null;
 }

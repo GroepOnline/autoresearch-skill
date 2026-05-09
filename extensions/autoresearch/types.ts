@@ -9,6 +9,10 @@ export interface ArConfig {
   noise_floor_pct?: number;
   max_runs?: number;
   max_minutes?: number;
+  max_consecutive_discards?: number;
+  max_runs_without_improvement?: number;
+  max_diff_lines_assisted?: number;
+  max_diff_lines_ralph?: number;
   created_at?: string;
   segment?: number;
   // Legacy fields used by earlier extension drafts.

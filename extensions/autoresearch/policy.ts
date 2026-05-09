@@ -12,11 +12,14 @@ export interface PolicyDecision {
   reason?: string;
 }
 
-// ── Module-level diff-size limit ───────────────────────────────────────────
-let currentMaxDiffLines = 50;
-
-export function setMaxDiffLines(n: number): void {
-  currentMaxDiffLines = n;
+export interface SecurityAuditEntry {
+  type: "security_block";
+  timestamp: string;
+  tool: string;
+  reason: string;
+  path?: string;
+  commandPreview?: string;
+  inputKeys?: string[];
 }
 
 const DEFAULT_PROTECTED_PATTERNS = [
@@ -72,6 +75,40 @@ export function isRuntimeArtifact(relPath: string): boolean {
 
 export function isProtectedPath(relPath: string): boolean {
   return DEFAULT_PROTECTED_PATTERNS.some(pattern => pattern.test(relPath));
+}
+
+function isSensitivePath(relPath: string): boolean {
+  return [
+    /^\.env(?:\.|$)/,
+    /(?:^|\/)\.env(?:\.|$)/,
+    /(?:^|\/)(?:id_rsa|id_ed25519|known_hosts)$/,
+    /(?:^|\/).*\.(?:pem|key|p12|pfx)$/,
+  ].some(pattern => pattern.test(relPath));
+}
+
+function redactPathForAudit(rawPath: string): string {
+  const normalized = rawPath.replaceAll(path.sep, "/").trim();
+  if (!normalized) return "[redacted path]";
+  if (isSensitivePath(normalized)) return "[redacted path]";
+  return normalized;
+}
+
+function redactSensitiveText(text: string): string {
+  let redacted = text.replaceAll(path.sep, "/");
+  redacted = redacted.replace(/\bAuthorization\s*:\s*[^'"\n\r]+/gi, "Authorization: [redacted]");
+  redacted = redacted.replace(/\bAuthorization\s*=\s*[^'"\n\r]+/gi, "Authorization=[redacted]");
+  redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]");
+  redacted = redacted.replace(/\b(?:api[-_]?key|token|secret|password|passwd)\s*[:=]\s*['\"]?[^'\"`\s]+['\"]?/gi, match => {
+    const idx = match.search(/[:=]/);
+    return idx >= 0 ? `${match.slice(0, idx + 1)}[redacted]` : "[redacted]";
+  });
+  redacted = redacted.replace(/\.env(?:\.[A-Za-z0-9_-]+)?/gi, "[redacted-env]");
+  redacted = redacted.replace(/\b(?:id_rsa|id_ed25519|known_hosts)\b/gi, "[redacted-key]");
+  return redacted;
+}
+
+function previewCommand(command: string): string {
+  return redactSensitiveText(command.replace(/\s+/g, " ").trim()).slice(0, 200);
 }
 
 function extractSectionLines(markdown: string, heading: string): string[] {
@@ -133,8 +170,32 @@ export function evaluateBashCommand(command: string): PolicyDecision {
   return { block: false };
 }
 
-function evaluateDiffSize(toolName: string, input: Record<string, unknown>): PolicyDecision {
-  if (currentMaxDiffLines <= 0) return { block: false }; // 0 or negative = no limit
+function countLines(text: string): number {
+  return text.length === 0 ? 0 : text.split("\n").length;
+}
+
+function editSizeFromEntry(entry: unknown): number {
+  if (!entry || typeof entry !== "object") return 0;
+  const record = entry as Record<string, unknown>;
+  const oldText = typeof record.oldText === "string"
+    ? record.oldText
+    : typeof record.old === "string"
+      ? record.old
+      : typeof record.old_str === "string"
+        ? record.old_str
+        : "";
+  const newText = typeof record.newText === "string"
+    ? record.newText
+    : typeof record.new === "string"
+      ? record.new
+      : typeof record.new_str === "string"
+        ? record.new_str
+        : "";
+  return Math.max(countLines(oldText), countLines(newText));
+}
+
+function evaluateDiffSize(toolName: string, input: Record<string, unknown>, maxDiffLines: number): PolicyDecision {
+  if (maxDiffLines <= 0) return { block: false }; // 0 or negative = no limit
   if (!["write", "edit", "str_replace"].includes(toolName)) return { block: false };
 
   let totalChangedLines = 0;
@@ -142,39 +203,56 @@ function evaluateDiffSize(toolName: string, input: Record<string, unknown>): Pol
   if (toolName === "write") {
     const content = input.content;
     if (typeof content === "string") {
-      totalChangedLines = content.split("\n").length;
+      totalChangedLines = countLines(content);
     }
   } else {
-    // edit / str_replace: check for replacements array or single old/new
+    const edits = input.edits;
     const replacements = input.replacements;
-    if (Array.isArray(replacements)) {
-      for (const r of replacements) {
-        if (typeof r === "object" && r) {
-          const oldLines = typeof (r as Record<string, unknown>).old === "string" ? (r as Record<string, unknown>).old!.toString().split("\n").length : 0;
-          const newLines = typeof (r as Record<string, unknown>).new === "string" ? (r as Record<string, unknown>).new!.toString().split("\n").length : 0;
-          totalChangedLines += Math.max(oldLines, newLines);
-        }
-      }
+
+    if (Array.isArray(edits)) {
+      for (const entry of edits) totalChangedLines += editSizeFromEntry(entry);
+    } else if (Array.isArray(replacements)) {
+      for (const entry of replacements) totalChangedLines += editSizeFromEntry(entry);
     } else {
-      const oldStr = typeof input.old === "string" ? input.old : typeof input.old_str === "string" ? input.old_str : "";
-      const newStr = typeof input.new === "string" ? input.new : typeof input.new_str === "string" ? input.new_str : "";
-      if (oldStr || newStr) {
-        totalChangedLines = Math.max(oldStr.split("\n").length, newStr.split("\n").length);
-      }
+      totalChangedLines = editSizeFromEntry(input);
     }
   }
 
-  if (totalChangedLines > currentMaxDiffLines) {
+  if (totalChangedLines > maxDiffLines) {
     return {
       block: true,
-      reason: `Autoresearch policy: diff too large (${totalChangedLines} lines, max ${currentMaxDiffLines}). Wijs kleine, incrementele wijzigingen toe.`,
+      reason: `Autoresearch policy: diff too large (${totalChangedLines} lines, max ${maxDiffLines}). Wijs kleine, incrementele wijzigingen toe.`,
     };
   }
 
   return { block: false };
 }
 
-export function evaluateToolCall(toolName: string, input: Record<string, unknown>, cwd: string, contract = readContract(cwd)): PolicyDecision {
+export function buildSecurityAuditEntry(toolName: string, input: Record<string, unknown>, reason: string): SecurityAuditEntry {
+  const entry: SecurityAuditEntry = {
+    type: "security_block",
+    timestamp: new Date().toISOString(),
+    tool: toolName,
+    reason,
+  };
+
+  if (typeof input.path === "string" && input.path.trim()) {
+    entry.path = redactPathForAudit(input.path);
+  }
+
+  if (typeof input.command === "string" && input.command.trim()) {
+    entry.commandPreview = previewCommand(input.command);
+  }
+
+  const keys = Object.keys(input)
+    .filter(key => !["path", "command", "content", "edits", "replacements", "old", "oldText", "old_str", "new", "newText", "new_str"].includes(key))
+    .sort();
+  if (keys.length > 0) entry.inputKeys = keys.slice(0, 10);
+
+  return entry;
+}
+
+export function evaluateToolCall(toolName: string, input: Record<string, unknown>, cwd: string, contract = readContract(cwd), maxDiffLines = 50): PolicyDecision {
   if (toolName === "bash") {
     const command = input.command;
     if (typeof command !== "string") return { block: true, reason: "Autoresearch policy: bash command is missing." };
@@ -184,7 +262,7 @@ export function evaluateToolCall(toolName: string, input: Record<string, unknown
   if (toolName === "write" || toolName === "edit" || toolName === "str_replace") {
     const pathDecision = evaluatePathMutation(cwd, input.path, contract);
     if (pathDecision.block) return pathDecision;
-    const sizeDecision = evaluateDiffSize(toolName, input);
+    const sizeDecision = evaluateDiffSize(toolName, input, maxDiffLines);
     if (sizeDecision.block) return sizeDecision;
   }
 

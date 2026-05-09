@@ -15,7 +15,7 @@ import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
 import type { LoopState } from "./loop.js";
 import { buildContinuationMessage, evaluateContinuation, summarizeLoopStop, type LoopContinuation } from "./loop.js";
-import { evaluateToolCall, hasAutoresearchSession } from "./policy.js";
+import { buildSecurityAuditEntry, evaluateToolCall, hasAutoresearchSession } from "./policy.js";
 import { buildContextInjection, delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { footerText } from "./ui.js";
 import { registerAutoresearchTools } from "./tools.js";
@@ -84,8 +84,19 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   // ─── tool_call guard ──────────────────────────────────────────────────────────
   pi.on("tool_call", async (event, ctx) => {
     if (!hasAutoresearchSession(ctx.cwd)) return;
-    const decision = evaluateToolCall(event.toolName, event.input, ctx.cwd);
-    if (decision.block) return { block: true, reason: decision.reason };
+    const maxDiffLines = activeLoop?.maxDiffLines ?? 50;
+    const decision = evaluateToolCall(event.toolName, event.input, ctx.cwd, undefined, maxDiffLines);
+    if (decision.block) {
+      // Security audit logging
+      const auditPath = path.join(ctx.cwd, ".autoresearch-audit.jsonl");
+      try {
+        const auditEntry = buildSecurityAuditEntry(event.toolName, event.input, decision.reason ?? "blocked by policy");
+        fs.appendFileSync(auditPath, JSON.stringify(auditEntry) + "\n");
+      } catch (error) {
+        console.error(`[autoresearch] Failed to write audit log to ${auditPath}:`, error);
+      }
+      return { block: true, reason: decision.reason };
+    }
   });
 
   // ─── agent_end: update footer + autonomous continuation ─────────────────────
@@ -178,12 +189,61 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
 // ─── Helpers ───────────────────────────────────────────────────────────────────
 
+/**
+ * Cleanup old experiment files to prevent unbounded growth.
+ * Keeps last 50 files and removes files older than 30 days.
+ */
+function cleanupExperiments(experimentsDir: string): void {
+  if (!fs.existsSync(experimentsDir)) return;
+
+  try {
+    const files = fs.readdirSync(experimentsDir)
+      .filter(file => file.startsWith("summary-") && file.endsWith(".md"))
+      .map(file => ({
+        name: file,
+        path: path.join(experimentsDir, file),
+        stat: fs.statSync(path.join(experimentsDir, file)),
+      }))
+      .sort((a, b) => b.stat.mtimeMs - a.stat.mtimeMs); // Newest first
+
+    const maxAge = 30 * 24 * 60 * 60 * 1000; // 30 days in ms
+    const now = Date.now();
+    const keepCount = 50;
+
+    let deleted = 0;
+    for (let i = 0; i < files.length; i++) {
+      const file = files[i];
+      const shouldDelete = i >= keepCount || (now - file.stat.mtimeMs) > maxAge;
+
+      if (shouldDelete) {
+        try {
+          fs.unlinkSync(file.path);
+          deleted++;
+        } catch {
+          // Best effort - don't fail the summary write on cleanup failure
+        }
+      }
+    }
+
+    if (deleted > 0) {
+      console.log(`[autoresearch] Cleaned up ${deleted} old experiment files`);
+    }
+  } catch (error) {
+    // Don't fail summary write on cleanup failure
+    console.error(`[autoresearch] Failed to cleanup experiments:`, error);
+  }
+}
+
 function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, state: import("./types.js").ArState): void {
   const config = state.config;
   if (!config) return;
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filePath = path.join(cwd, "experiments", `summary-${ts}.md`);
+  const experimentsDir = path.join(cwd, "experiments");
+  const filePath = path.join(experimentsDir, `summary-${ts}.md`);
+
+  // Cleanup old experiments (keep last 50 files, max 30 days old)
+  cleanupExperiments(experimentsDir);
 
   const lines = [
     `# Autoresearch Stop Summary`,
@@ -218,8 +278,10 @@ function writeStopSummary(cwd: string, loop: LoopState, cont: LoopContinuation, 
   lines.push("", `*Gegenereerd door autoresearch plugin*`);
 
   try {
-    const dir = path.join(cwd, "experiments");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    if (!fs.existsSync(experimentsDir)) fs.mkdirSync(experimentsDir, { recursive: true });
     fs.writeFileSync(filePath, lines.join("\n") + "\n");
-  } catch { /* best-effort */ }
+  } catch (error) {
+    // Log error to stderr - this is critical for debugging production issues
+    console.error(`[autoresearch] Failed to write stop summary to ${filePath}:`, error);
+  }
 }
