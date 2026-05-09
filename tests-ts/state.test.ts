@@ -1,9 +1,9 @@
 import assert from "node:assert/strict";
-import { mkdtempSync, writeFileSync } from "node:fs";
+import { mkdtempSync, readFileSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { parseStartBudgets, paths, readState } from "../extensions/autoresearch/state.js";
+import { buildContextInjection, parseStartBudgets, paths, readState } from "../extensions/autoresearch/state.js";
 import { dashboardRows, footerText, statusText } from "../extensions/autoresearch/ui.js";
 
 function tempProject(): string {
@@ -67,6 +67,47 @@ test("readState rejects decisions that do not follow a result", () => {
 
   const state = readState(cwd);
   assert.ok(state.parseErrors.some(error => error.includes("no preceding result")));
+});
+
+test("readState rejects config without required schema fields", () => {
+  const cwd = tempProject();
+  writeFileSync(paths(cwd).jsonl, [
+    JSON.stringify({
+      type: "config",
+      name: "optimize-loop",
+      metric: "latency_ms",
+      direction: "lower",
+    }),
+  ].join("\n") + "\n");
+
+  const state = readState(cwd);
+  assert.ok(state.parseErrors.some(error => error.includes("schema_version must be 1")));
+  assert.ok(state.parseErrors.some(error => error.includes("created_at is required")));
+});
+
+test("buildContextInjection writes a snapshot from current state", () => {
+  const cwd = tempProject();
+  writeFileSync(paths(cwd).context, "# Autoresearch\n", "utf-8");
+  writeFileSync(paths(cwd).jsonl, [
+    JSON.stringify({
+      type: "config",
+      schema_version: 1,
+      name: "optimize-loop",
+      metric: "latency_ms",
+      direction: "lower",
+      created_at: "2026-05-06T12:00:00Z",
+    }),
+    JSON.stringify({ type: "result", run: 1, metric: "latency_ms", median: 100, timestamp: "t" }),
+    JSON.stringify({ type: "decision", run: 1, action: "baseline", reason: "baseline", timestamp: "t" }),
+  ].join("\n") + "\n");
+
+  const state = readState(cwd);
+  const injection = buildContextInjection(cwd, state);
+  assert.ok(injection?.includes("Autoresearch Loop"));
+
+  const snapshot = JSON.parse(readFileSync(paths(cwd).snapshot, "utf-8")) as { counts: { runs: number }; resumeInstruction: string };
+  assert.equal(snapshot.counts.runs, 1);
+  assert.match(snapshot.resumeInstruction, /continue from run 2/);
 });
 
 test("parseStartBudgets defaults invalid values and accepts explicit values", () => {
