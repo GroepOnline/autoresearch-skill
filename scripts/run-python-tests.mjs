@@ -4,7 +4,7 @@ import { spawnSync } from "node:child_process";
 const testArgs = ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"];
 const configured = process.env.PYTHON ? [[process.env.PYTHON, []]] : [];
 const platformCandidates = process.platform === "win32"
-  ? [["py", ["-3"]], ["python", []], ["python3", []]]
+  ? [["python", []], ["python3", []], ["py", ["-3"]]]
   : [["python3", []], ["python", []]];
 
 for (const [command, prefixArgs] of [...configured, ...platformCandidates]) {
@@ -13,6 +13,10 @@ for (const [command, prefixArgs] of [...configured, ...platformCandidates]) {
   if (result.error) {
     console.error(result.error.message);
     process.exit(1);
+  }
+  if (result.status !== 0 && !process.env.PYTHON && process.platform === "win32") {
+    const probe = spawnSync(command, [...prefixArgs, "--version"], { stdio: "ignore" });
+    if (probe.error?.code === "ENOENT" || probe.status !== 0) continue;
   }
   process.exit(result.status ?? 1);
 }

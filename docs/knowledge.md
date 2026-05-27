@@ -18,7 +18,7 @@ This file gives Codebuff context about your project: goals, commands, convention
   - `experiments/` - Autoresearch experiment output directory
 
 - **Data flow**:
-  1. User writes `.agents/autoresearch/autoresearch.md` with objective, metrics, run commands, scope
+  1. User writes `.autoresearch/autoresearch.md` with objective, metrics, run commands, scope
   2. `/autoresearch start` initializes JSONL state file
   3. Loop runs experiments, captures METRIC output, stores in JSONL
   4. `autoresearch_decide` tool evaluates results against benchmark policy
@@ -56,7 +56,7 @@ This file gives Codebuff context about your project: goals, commands, convention
 
 ## Key files
 
-- `.agents/autoresearch/autoresearch.md` - User-defined context (objective, metrics, run commands, scope)
-- `.agents/autoresearch/autoresearch.jsonl` - Append-only state log (config, results, decisions)
-- `.agents/autoresearch/AUTORESEARCH_STATE.json` - Snapshot for quick resume
+- `.autoresearch/autoresearch.md` - User-defined context (objective, metrics, run commands, scope)
+- `.autoresearch/autoresearch.jsonl` - Append-only state log (config, results, decisions)
+- `.autoresearch/AUTORESEARCH_STATE.json` - Snapshot for quick resume
 - `experiments/summary-{timestamp}.md` - Stop reports

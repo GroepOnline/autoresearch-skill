@@ -16,10 +16,10 @@
 ## Behavior
 
 - `status` reads JSONL and reports config, run count, best value, pause state, and parse errors.
-- `new` scaffolds `.agents/autoresearch/autoresearch.md`, `.agents/autoresearch/autoresearch.sh`, and `.agents/autoresearch/worklog.md`.
+- `new` scaffolds `.autoresearch/autoresearch.md`, `.autoresearch/autoresearch.sh`, and `.autoresearch/worklog.md`.
 - `start` sends a bounded follow-up instruction with explicit run and time budgets.
-- `pause` writes `.agents/autoresearch/.autoresearch-off`.
-- `resume` removes `.agents/autoresearch/.autoresearch-off`.
+- `pause` writes `.autoresearch/.autoresearch-off`.
+- `resume` removes `.autoresearch/.autoresearch-off`.
 - `dashboard` renders recent run state from JSONL.
 
 ## Hardening rules

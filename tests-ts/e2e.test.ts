@@ -31,7 +31,7 @@ test("e2e fixture: new -> filled contract -> start -> result -> decision -> dash
       "- **Primary**: latency_ms (ms, lower is better)",
       "",
       "## How to Run",
-      "`./.agents/autoresearch/autoresearch.sh` prints METRIC latency_ms values.",
+      "`./.autoresearch/autoresearch.sh` prints METRIC latency_ms values.",
       "",
       "## Files in Scope",
       "- src/parser.ts",

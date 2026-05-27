@@ -5,13 +5,13 @@
   "type": "module",
   "license": "MIT",
   "author": "OnlineChef",
-  "homepage": "https://github.com/OnlineChef/autoresearch-skill#readme",
+  "homepage": "https://github.com/OnlineChefGroep/autoresearch-skill#readme",
   "bugs": {
-    "url": "https://github.com/OnlineChef/autoresearch-skill/issues"
+    "url": "https://github.com/OnlineChefGroep/autoresearch-skill/issues"
   },
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/OnlineChef/autoresearch-skill.git"
+    "url": "git+https://github.com/OnlineChefGroep/autoresearch-skill.git"
   },
   "keywords": [
     "pi-package",

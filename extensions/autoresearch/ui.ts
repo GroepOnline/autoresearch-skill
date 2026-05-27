@@ -18,7 +18,7 @@ export function footerText(state: ArState): string {
 export function statusText(state: ArState): string {
   if (state.parseErrors.length > 0) {
     return [
-      "⚠️ .agents/autoresearch/autoresearch.jsonl bevat fouten:",
+      "⚠️ .autoresearch/autoresearch.jsonl bevat fouten:",
       ...state.parseErrors.map((error) => `- ${error}`),
     ].join("\n");
   }
@@ -48,7 +48,7 @@ export function statusText(state: ArState): string {
     last ? `📝 Laatste: run #${last.run} → ${last.status} — ${last.description}` : "",
     "",
     state.isPaused ? "⏸️  STATUS: PAUSED — gebruik /autoresearch resume" : "▶️  STATUS: ACTIEF",
-    state.hasIdeas ? "💡 .agents/autoresearch/autoresearch.ideas.md aanwezig" : "",
+    state.hasIdeas ? "💡 .autoresearch/autoresearch.ideas.md aanwezig" : "",
     "",
     "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
     "💡 Gebruik /autoresearch dashboard voor gedetailleerd overzicht",

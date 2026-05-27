@@ -46,7 +46,8 @@ module.exports = { parse };
 EOF
 
 # Create benchmark script
-cat > autoresearch.sh << 'EOF'
+mkdir -p .autoresearch
+cat > .autoresearch/autoresearch.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -66,14 +67,14 @@ LATENCY=$(( ($END - $START) / 20 ))
 echo "METRIC latency_ms=${LATENCY} direction=lower"
 EOF
 
-chmod +x autoresearch.sh
+chmod +x .autoresearch/autoresearch.sh
 
 # Create initial commit
-git add src/parser.js autoresearch.sh
+git add src/parser.js .autoresearch/autoresearch.sh
 git commit -m "Initial commit"
 
 # Create autoresearch contract
-cat > autoresearch.md << 'EOF'
+cat > .autoresearch/autoresearch.md << 'EOF'
 # Autoresearch: Optimize Parser
 
 ## Objective
@@ -83,7 +84,7 @@ Reduce parser latency without changing behavior.
 - **Primary**: latency_ms (ms, lower is better)
 
 ## How to Run
-`./autoresearch.sh` prints METRIC latency_ms values.
+`./.autoresearch/autoresearch.sh` prints METRIC latency_ms values.
 
 ## Files in Scope
 - src/parser.ts
@@ -92,21 +93,19 @@ Reduce parser latency without changing behavior.
 - none
 EOF
 
-# Create experiments directory
-mkdir -p experiments
-echo "# Worklog" > experiments/worklog.md
+echo "# Worklog" > .autoresearch/worklog.md
 
 # Create initial state files
-cat > autoresearch.jsonl << 'EOF'
+cat > .autoresearch/autoresearch.jsonl << 'EOF'
 {"type":"config","metric":"latency_ms","direction":"lower","max_runs":10,"max_minutes":30,"effect_size":0.05,"noise_floor":0.02}
 EOF
 
 echo "Running baseline benchmark..."
-BASELINE=$(./autoresearch.sh | grep "METRIC" | cut -d'=' -f2 | cut -d' ' -f1)
+BASELINE=$(./.autoresearch/autoresearch.sh | grep "METRIC" | cut -d'=' -f2 | cut -d' ' -f1)
 echo "Baseline latency: ${BASELINE}ms"
 
 # Add baseline to state
-cat >> autoresearch.jsonl << EOF
+cat >> .autoresearch/autoresearch.jsonl << EOF
 {"type":"result","run":1,"metric":"latency_ms","median":${BASELINE},"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","description":"baseline"}
 {"type":"decision","run":1,"action":"baseline","reason":"baseline measurement","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
@@ -123,11 +122,11 @@ git add src/parser.js
 git commit -m "Optimize parser"
 
 echo "Running optimized benchmark..."
-OPTIMIZED=$(./autoresearch.sh | grep "METRIC" | cut -d'=' -f2 | cut -d' ' -f1)
+OPTIMIZED=$(./.autoresearch/autoresearch.sh | grep "METRIC" | cut -d'=' -f2 | cut -d' ' -f1)
 echo "Optimized latency: ${OPTIMIZED}ms"
 
 # Add result to state
-cat >> autoresearch.jsonl << EOF
+cat >> .autoresearch/autoresearch.jsonl << EOF
 {"type":"result","run":2,"metric":"latency_ms","median":${OPTIMIZED},"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","description":"remove string concatenation"}
 EOF
 
@@ -141,7 +140,7 @@ else
     REASON="no significant improvement"
 fi
 
-cat >> autoresearch.jsonl << EOF
+cat >> .autoresearch/autoresearch.jsonl << EOF
 {"type":"decision","run":2,"action":"$ACTION","reason":"$REASON","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
 
@@ -149,8 +148,8 @@ echo "Decision: $ACTION - $REASON"
 
 # Verify state
 echo "Verifying state..."
-RUN_COUNT=$(grep -c '"type":"result"' autoresearch.jsonl)
-DECISION_COUNT=$(grep -c '"type":"decision"' autoresearch.jsonl)
+RUN_COUNT=$(grep -c '"type":"result"' .autoresearch/autoresearch.jsonl)
+DECISION_COUNT=$(grep -c '"type":"decision"' .autoresearch/autoresearch.jsonl)
 echo "Total runs: $RUN_COUNT"
 echo "Total decisions: $DECISION_COUNT"
 

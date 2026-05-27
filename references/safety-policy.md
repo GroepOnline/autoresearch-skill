@@ -55,4 +55,4 @@ Defaults:
 
 ## Pause sentinel
 
-When `.agents/autoresearch/.autoresearch-off` exists, finish the current safe checkpoint and stop before starting the next run.
+When `.autoresearch/.autoresearch-off` exists, finish the current safe checkpoint and stop before starting the next run.

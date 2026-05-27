@@ -242,7 +242,8 @@ add_section "Phase 5: State Management Tests"
 cd "$TEST_PROJECT_DIR"
 
 # Create autoresearch contract
-cat > autoresearch.md << 'EOF'
+mkdir -p .autoresearch
+cat > .autoresearch/autoresearch.md << 'EOF'
 # Test Optimization
 
 ## Objective
@@ -258,31 +259,29 @@ Test optimization workflow
 - none
 EOF
 
-# Create experiments directory
-mkdir -p experiments
-echo "# Worklog" > experiments/worklog.md
+echo "# Worklog" > .autoresearch/worklog.md
 
 # Initialize autoresearch state
-cat > autoresearch.jsonl << 'EOF'
+cat > .autoresearch/autoresearch.jsonl << 'EOF'
 {"type":"config","metric":"latency_ms","direction":"lower","max_runs":5,"max_minutes":10}
 EOF
 
 # Test JSONL creation
-if [ -f autoresearch.jsonl ]; then
+if [ -f .autoresearch/autoresearch.jsonl ]; then
     log_test "JSONL creation works" "PASS"
 else
     log_test "JSONL creation works" "FAIL"
 fi
 
 # Test contract creation
-if [ -f autoresearch.md ]; then
+if [ -f .autoresearch/autoresearch.md ]; then
     log_test "Contract creation works" "PASS"
 else
     log_test "Contract creation works" "FAIL"
 fi
 
 # Test worklog creation
-if [ -f experiments/worklog.md ]; then
+if [ -f .autoresearch/worklog.md ]; then
     log_test "Worklog creation works" "PASS"
 else
     log_test "Worklog creation works" "FAIL"
@@ -304,7 +303,7 @@ module.exports = { slowFunction };
 EOF
 
 # Create benchmark script
-cat > autoresearch.sh << 'EOF'
+cat > .autoresearch/autoresearch.sh << 'EOF'
 #!/usr/bin/env bash
 START=$(node -e "console.log(Date.now())")
 for i in {1..5}; do
@@ -315,28 +314,28 @@ LATENCY=$(( ($END - $START) / 5 ))
 echo "METRIC latency_ms=${LATENCY} direction=lower"
 EOF
 
-chmod +x autoresearch.sh
+chmod +x .autoresearch/autoresearch.sh
 
 # Run benchmark
-if ./autoresearch.sh | grep -q "METRIC"; then
+if ./.autoresearch/autoresearch.sh | grep -q "METRIC"; then
     log_test "Benchmark execution works" "PASS"
 else
     log_test "Benchmark execution works" "FAIL"
 fi
 
 # Add baseline to state
-BASELINE_OUTPUT=$(./autoresearch.sh 2>/dev/null || true)
+BASELINE_OUTPUT=$(./.autoresearch/autoresearch.sh 2>/dev/null || true)
 BASELINE=$(echo "$BASELINE_OUTPUT" | grep "METRIC" | cut -d'=' -f2 | cut -d' ' -f1 || true)
 if [ -z "$BASELINE" ]; then
     BASELINE=0
 fi
-cat >> autoresearch.jsonl << EOF
+cat >> .autoresearch/autoresearch.jsonl << EOF
 {"type":"result","run":1,"metric":"latency_ms","median":${BASELINE},"timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)","description":"baseline"}
 {"type":"decision","run":1,"action":"baseline","reason":"baseline measurement","timestamp":"$(date -u +%Y-%m-%dT%H:%M:%SZ)"}
 EOF
 
 # Test state update
-RUN_COUNT=$(grep -c '"type":"result"' autoresearch.jsonl)
+RUN_COUNT=$(grep -c '"type":"result"' .autoresearch/autoresearch.jsonl)
 if [ "$RUN_COUNT" -eq 1 ]; then
     log_test "State update works" "PASS"
 else

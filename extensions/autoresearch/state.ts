@@ -28,7 +28,7 @@ export function clearStateCache(cwd?: string): void {
 }
 
 export function paths(cwd: string) {
-  const artifactsDir = path.join(cwd, ".agents", "autoresearch");
+  const artifactsDir = path.join(cwd, ".autoresearch");
   const legacy = {
     jsonl: path.join(cwd, "autoresearch.jsonl"),
     context: path.join(cwd, "autoresearch.md"),
@@ -38,7 +38,7 @@ export function paths(cwd: string) {
     ideas: path.join(cwd, "autoresearch.ideas.md"),
     snapshot: path.join(cwd, "AUTORESEARCH_STATE.json"),
     benchmark: path.join(cwd, "autoresearch.sh"),
-    oldDir: path.join(cwd, ".autoresearch"),
+    agentsDir: path.join(cwd, ".agents", "autoresearch"),
   };
   return {
     dir: artifactsDir,
@@ -128,20 +128,19 @@ export function ensureArtifactsLayout(cwd: string): void {
   const p = paths(cwd);
   fs.mkdirSync(p.dir, { recursive: true });
 
-  // Migrate from old .autoresearch/ directory to .agents/autoresearch/
-  const oldDir = p.legacy.oldDir;
-  if (fs.existsSync(oldDir)) {
-    safeMoveIfNeeded(path.join(oldDir, "autoresearch.jsonl"), p.jsonl);
-    safeMoveIfNeeded(path.join(oldDir, "autoresearch.md"), p.context);
-    safeMoveIfNeeded(path.join(oldDir, ".autoresearch-off"), p.sentinel);
-    safeMoveIfNeeded(path.join(oldDir, "autoresearch-dashboard.md"), p.dashboard);
-    safeMoveIfNeeded(path.join(oldDir, "worklog.md"), p.worklog);
-    safeMoveIfNeeded(path.join(oldDir, "autoresearch.ideas.md"), p.ideas);
-    safeMoveIfNeeded(path.join(oldDir, "AUTORESEARCH_STATE.json"), p.snapshot);
-    safeMoveIfNeeded(path.join(oldDir, "autoresearch.sh"), p.benchmark);
-    // Try to remove old directory if empty
+  // Migrate from the previous .agents/autoresearch/ runtime directory.
+  const agentsDir = p.legacy.agentsDir;
+  if (fs.existsSync(agentsDir)) {
+    safeMoveIfNeeded(path.join(agentsDir, "autoresearch.jsonl"), p.jsonl);
+    safeMoveIfNeeded(path.join(agentsDir, "autoresearch.md"), p.context);
+    safeMoveIfNeeded(path.join(agentsDir, ".autoresearch-off"), p.sentinel);
+    safeMoveIfNeeded(path.join(agentsDir, "autoresearch-dashboard.md"), p.dashboard);
+    safeMoveIfNeeded(path.join(agentsDir, "worklog.md"), p.worklog);
+    safeMoveIfNeeded(path.join(agentsDir, "autoresearch.ideas.md"), p.ideas);
+    safeMoveIfNeeded(path.join(agentsDir, "AUTORESEARCH_STATE.json"), p.snapshot);
+    safeMoveIfNeeded(path.join(agentsDir, "autoresearch.sh"), p.benchmark);
     try {
-      fs.rmdirSync(oldDir);
+      fs.rmdirSync(agentsDir);
     } catch {
       // Ignore if not empty or other error
     }
@@ -484,7 +483,7 @@ export function buildContextInjection(
   if (state.parseErrors.length > 0) {
     return [
       "## Autoresearch blocked",
-      ".agents/autoresearch/autoresearch.jsonl has parse or schema errors. Fix these before continuing:",
+      ".autoresearch/autoresearch.jsonl has parse or schema errors. Fix these before continuing:",
       ...state.parseErrors.map((error) => `- ${error}`),
     ].join("\n");
   }
@@ -569,7 +568,7 @@ export function buildContextInjection(
 
   md += `\n### Regels\n`;
   md += `- ÉÉN hypothese per run\n`;
-  md += `- Run \`./.agents/autoresearch/autoresearch.sh\` als benchmark\n`;
+  md += `- Run \`./.autoresearch/autoresearch.sh\` als benchmark\n`;
   md += `- Gebruik \`autoresearch_decide\` voor keep/discard/stop\n`;
   md += `- Stop bij: budget op, safety issues, corrupte state, noise, of test failures\n`;
 

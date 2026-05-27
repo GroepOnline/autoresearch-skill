@@ -27,7 +27,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 ## Start workflow
 
 1. Verify that the repository has a clean git state. Stop if there is uncommitted user work outside the autoresearch workspace.
-2. Create or load `.agents/autoresearch/autoresearch.md`, `.agents/autoresearch/autoresearch.jsonl`, and `.agents/autoresearch/worklog.md`.
+2. Create or load `.autoresearch/autoresearch.md`, `.autoresearch/autoresearch.jsonl`, and `.autoresearch/worklog.md`.
 3. Confirm the optimization target, primary metric, direction (`lower` or `higher`), files in scope, off-limits paths, and run budget.
 4. Establish a baseline with the same benchmark policy used for future runs.
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
@@ -50,13 +50,13 @@ Load these files when the step requires detail:
 
 Autoresearch sessions create runtime files in the target repository, not in this skill repository:
 
-- `.agents/autoresearch/autoresearch.md` - human-readable experiment contract.
-- `.agents/autoresearch/autoresearch.jsonl` - append-only source of truth.
-- `.agents/autoresearch/AUTORESEARCH_STATE.json` - generated snapshot for quick resume.
-- `.agents/autoresearch/autoresearch-dashboard.md` - generated progress dashboard.
-- `.agents/autoresearch/worklog.md` - narrative record of hypotheses and lessons.
+- `.autoresearch/autoresearch.md` - human-readable experiment contract.
+- `.autoresearch/autoresearch.jsonl` - append-only source of truth.
+- `.autoresearch/AUTORESEARCH_STATE.json` - generated snapshot for quick resume.
+- `.autoresearch/autoresearch-dashboard.md` - generated progress dashboard.
+- `.autoresearch/worklog.md` - narrative record of hypotheses and lessons.
 - `experiments/summary-{ts}.md` - auto-generated stop summary.
-- `.agents/autoresearch/.autoresearch-off` - pause sentinel.
+- `.autoresearch/.autoresearch-off` - pause sentinel.
 
 ## Decision rule summary
 

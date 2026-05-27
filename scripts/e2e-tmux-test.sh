@@ -43,7 +43,8 @@ export function parse(input: string): any {
 EOF
 
 # Create benchmark script
-cat > autoresearch.sh << 'EOF'
+mkdir -p .autoresearch
+cat > .autoresearch/autoresearch.sh << 'EOF'
 #!/usr/bin/env bash
 set -euo pipefail
 
@@ -63,7 +64,7 @@ LATENCY=$(( ($END - $START) / 10 ))
 echo "METRIC latency_ms=${LATENCY} direction=lower"
 EOF
 
-chmod +x autoresearch.sh
+chmod +x .autoresearch/autoresearch.sh
 
 # Create initial commit
 git add .
@@ -75,7 +76,7 @@ tmux new-session -d -s "$SESSION_NAME" -n "autoresearch"
 
 # Send commands to tmux
 tmux send-keys -t "$SESSION_NAME" "cd $PROJECT_DIR" C-m
-tmux send-keys -t "$SESSION_NAME" "cat > autoresearch.md << 'EOF'
+tmux send-keys -t "$SESSION_NAME" "mkdir -p .autoresearch && cat > .autoresearch/autoresearch.md << 'EOF'
 # Autoresearch: Optimize Parser
 
 ## Objective
@@ -85,7 +86,7 @@ Reduce parser latency without changing behavior.
 - **Primary**: latency_ms (ms, lower is better)
 
 ## How to Run
-\`./autoresearch.sh\` prints METRIC latency_ms values.
+\`./.autoresearch/autoresearch.sh\` prints METRIC latency_ms values.
 
 ## Files in Scope
 - src/parser.ts
@@ -95,8 +96,7 @@ Reduce parser latency without changing behavior.
 EOF
 " C-m
 
-tmux send-keys -t "$SESSION_NAME" "mkdir -p experiments" C-m
-tmux send-keys -t "$SESSION_NAME" "echo '# Worklog' > experiments/worklog.md" C-m
+tmux send-keys -t "$SESSION_NAME" "echo '# Worklog' > .autoresearch/worklog.md" C-m
 
 echo "Tmux session created: $SESSION_NAME"
 echo "Attach with: tmux attach-session -t $SESSION_NAME"
@@ -108,7 +108,7 @@ read -p "Press Enter to continue with automated test or Ctrl+C to exit..."
 # Run the benchmark
 echo "Running baseline benchmark..."
 cd "$PROJECT_DIR"
-./autoresearch.sh
+./.autoresearch/autoresearch.sh
 
 echo "E2E test setup complete!"
 echo "Project directory: $PROJECT_DIR"

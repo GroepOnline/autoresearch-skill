@@ -44,9 +44,9 @@ function run(
 // ---------------------------------------------------------------------------
 
 test("run() returns empty string when stdout is null (inherited stdio)", () => {
-  // `echo` with stdio:"inherit" causes spawnSync to set stdout to null.
+  // `node` with stdio:"inherit" causes spawnSync to set stdout to null.
   // Before the fix this would throw: Cannot read properties of null (reading 'trim')
-  const result = run("echo", ["hello"], { stdio: "inherit" });
+  const result = run("node", ["--eval", "process.exit(0)"], { stdio: "inherit" });
   assert.equal(result, "");
 });
 
@@ -106,7 +106,7 @@ test("tarball path uses name and version from package.json", async () => {
   const outDir = "/dist";
   const pkg = { name: "pi-autoresearch", version: "1.0.0" };
   const tarball = join(outDir, `${pkg.name}-${pkg.version}.tgz`);
-  assert.equal(tarball, "/dist/pi-autoresearch-1.0.0.tgz");
+  assert.equal(tarball.replaceAll("\\", "/"), "/dist/pi-autoresearch-1.0.0.tgz");
 });
 
 test("tarball path changes with different name/version combinations", async () => {
@@ -120,7 +120,7 @@ test("tarball path changes with different name/version combinations", async () =
   for (const [name, version, expected] of cases) {
     const actual = join(outDir, `${name}-${version}.tgz`);
     assert.ok(
-      actual.endsWith(expected),
+      actual.replaceAll("\\", "/").endsWith(expected),
       `Expected path to end with ${expected}, got ${actual}`,
     );
   }

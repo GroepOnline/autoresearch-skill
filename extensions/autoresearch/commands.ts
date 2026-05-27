@@ -109,16 +109,16 @@ export function registerAutoresearchCommand(
           if (state.parseErrors.length > 0) {
             ctx.ui.notify(
               [
-                "❌ .agents/autoresearch/autoresearch.jsonl bevat fouten:",
+                "❌ .autoresearch/autoresearch.jsonl bevat fouten:",
                 ...state.parseErrors.map((e) => `- ${e}`),
               ].join("\n"),
               "error"
             );
           } else if (!state.config) {
-            ctx.ui.notify("Geen .agents/autoresearch/autoresearch.jsonl gevonden.", "warning");
+            ctx.ui.notify("Geen .autoresearch/autoresearch.jsonl gevonden.", "warning");
           } else {
             ctx.ui.notify(
-              `✅ .agents/autoresearch/autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`,
+              `✅ .autoresearch/autoresearch.jsonl valide — ${state.runCount} runs, ${state.decisions.length} decisions.`,
               "info"
             );
           }
@@ -134,7 +134,7 @@ export function registerAutoresearchCommand(
           if (fs.existsSync(p.context)) {
             const ok = await ctx.ui.confirm(
               "Overschrijven?",
-              `.agents/autoresearch/autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`
+              `.autoresearch/autoresearch.md bestaat al. Overschrijven voor: "${goal}"?`
             );
             if (!ok) return;
           }
@@ -161,7 +161,7 @@ export function registerAutoresearchCommand(
               "- **Secondary**: correctness pass/fail guardrail",
               "",
               "## How to Run",
-              "`./.agents/autoresearch/autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
+              "`./.autoresearch/autoresearch.sh` — runs correctness checks and prints `METRIC name=value direction=lower|higher` lines.",
               "",
               "## Files in Scope",
               "- .",
@@ -232,8 +232,8 @@ export function registerAutoresearchCommand(
                 : "",
               "",
               "Volgende stappen:",
-              "1. (Optioneel) verfijn .agents/autoresearch/autoresearch.md — metric, scope en constraints",
-              "2. Controleer .agents/autoresearch/autoresearch.sh en pas benchmark/checks aan indien nodig",
+              "1. (Optioneel) verfijn .autoresearch/autoresearch.md — metric, scope en constraints",
+              "2. Controleer .autoresearch/autoresearch.sh en pas benchmark/checks aan indien nodig",
               "3. /autoresearch start [runs] [min] — begin assisted loop",
               "   of: /autoresearch ralph [runs] [min] — begin Ralph mode",
             ]
@@ -255,7 +255,7 @@ export function registerAutoresearchCommand(
 
           const writeDashboard = await ctx.ui.confirm(
             "Dashboard schrijven?",
-            "Wil je een einddashboard bewaren in .agents/autoresearch/autoresearch-dashboard.md?"
+            "Wil je een einddashboard bewaren in .autoresearch/autoresearch-dashboard.md?"
           );
           if (writeDashboard) {
             const rows = dashboardRows(state);
@@ -264,17 +264,17 @@ export function registerAutoresearchCommand(
 
           const keepArtifacts = await ctx.ui.confirm(
             "Artefacten behouden?",
-            "Wil je alle autoresearch artefacten bewaren in .agents/autoresearch/? Kies 'Nee' voor cleanup."
+            "Wil je alle autoresearch artefacten bewaren in .autoresearch/? Kies 'Nee' voor cleanup."
           );
           if (!keepArtifacts) {
             if (archiveRequested) {
               if (!fs.existsSync(p.dir)) {
-                ctx.ui.notify("Geen .agents/autoresearch/ map om te archiveren.", "warning");
+                ctx.ui.notify("Geen .autoresearch/ map om te archiveren.", "warning");
                 return;
               }
               const confirmedArchive = await ctx.ui.confirm(
                 "Archiveren bevestigen",
-                "Archiveer .agents/autoresearch/ naar experiments/archive/<timestamp>/ ?"
+                "Archiveer .autoresearch/ naar experiments/archive/<timestamp>/ ?"
               );
               if (confirmedArchive) {
                 const archivedTo = archiveArtifacts(ctx.cwd, p.dir);
@@ -285,7 +285,7 @@ export function registerAutoresearchCommand(
             } else {
               const confirmed = await ctx.ui.confirm(
                 "Cleanup bevestigen",
-                "Verwijder .agents/autoresearch/ volledig (contract, state, benchmark, worklog, dashboard, snapshot)?"
+                "Verwijder .autoresearch/ volledig (contract, state, benchmark, worklog, dashboard, snapshot)?"
               );
               if (confirmed) {
                 fs.rmSync(p.dir, { recursive: true, force: true });
@@ -296,7 +296,7 @@ export function registerAutoresearchCommand(
           }
 
           ctx.ui.notify(
-            "✅ Finalize voltooid; artefacten blijven in .agents/autoresearch/. Tip: /autoresearch finalize --archive",
+            "✅ Finalize voltooid; artefacten blijven in .autoresearch/. Tip: /autoresearch finalize --archive",
             "info"
           );
           return;
@@ -417,13 +417,13 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
   if (!fs.existsSync(p.context))
     return {
       state: readState(cwd),
-      blockMsg: ".agents/autoresearch/autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
+      blockMsg: ".autoresearch/autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
     };
   const benchmark = p.benchmark;
   if (!fs.existsSync(benchmark))
     return {
       state: readState(cwd),
-      blockMsg: ".agents/autoresearch/autoresearch.sh niet gevonden. Maak het aan voordat je start.",
+      blockMsg: ".autoresearch/autoresearch.sh niet gevonden. Maak het aan voordat je start.",
     };
   if (fs.existsSync(p.sentinel))
     return {
@@ -469,7 +469,7 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
     return {
       state: readState(cwd),
       blockMsg:
-        "Start geblokkeerd — .agents/autoresearch/autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst.",
+        "Start geblokkeerd — .autoresearch/autoresearch.sh bevat nog template/TODO tekst. Implementeer tests + benchmark eerst.",
     };
   }
 
@@ -486,7 +486,7 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
       return {
         state,
         blockMsg:
-          "Start geblokkeerd — config ontbreekt en kon niet uit .agents/autoresearch/autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`.",
+          "Start geblokkeerd — config ontbreekt en kon niet uit .autoresearch/autoresearch.md worden afgeleid. Vul `## Metrics` in als `- **Primary**: metric_name (unit, lower|higher is better)`.",
       };
     }
     appendConfigIfMissing(p.jsonl, config);

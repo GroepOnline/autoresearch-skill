@@ -143,7 +143,7 @@ test("loop continues when plateau limit not yet reached", () => {
   assert.equal(cont.shouldContinue, true);
 });
 
-test("continuation prompt references centralized .agents/autoresearch artifacts", () => {
+test("continuation prompt references centralized .autoresearch artifacts", () => {
   const state = baseState({
     runCount: 1,
     baselineMetric: 100,
@@ -153,7 +153,7 @@ test("continuation prompt references centralized .agents/autoresearch artifacts"
   const loop = baseLoop();
   const cont = evaluateContinuation(state, loop, Date.now());
   const prompt = buildContinuationMessage(loop, cont, state);
-  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.md/);
-  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.jsonl/);
-  assert.match(prompt, /\.agents\/autoresearch\/autoresearch\.sh/);
+  assert.match(prompt, /\.autoresearch\/autoresearch\.md/);
+  assert.match(prompt, /\.autoresearch\/autoresearch\.jsonl/);
+  assert.match(prompt, /\.autoresearch\/autoresearch\.sh/);
 });

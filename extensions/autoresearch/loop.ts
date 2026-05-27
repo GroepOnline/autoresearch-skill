@@ -90,15 +90,15 @@ Regels:
 - GEEN slimme rewrites. GEEN architectuur-veranderingen.
 - De diff mag maximaal ~10 gewijzigde regels zijn, tenzij de scope dit uitdrukkelijk toestaat.
 - Geen nieuwe dependencies, geen config-wijzigingen, geen lockfile-wijzigingen.
-- Run ./.agents/autoresearch/autoresearch.sh, verifieer dat tests slagen, vergelijk mediaan met huidige best.
+- Run ./.autoresearch/autoresearch.sh, verifieer dat tests slagen, vergelijk mediaan met huidige best.
 - Als de verbetering < min_effect_size_pct: meteen discard, ga door.
 - Doe geen tweede hypothese in dezelfde run.`;
 
 const AUTONOMOUS_BASE_PROMPT = `Start één bounded autoresearch run.
-Lees .agents/autoresearch/autoresearch.md en .agents/autoresearch/autoresearch.jsonl voor context.
-Run ./.agents/autoresearch/autoresearch.sh als benchmark en parse METRIC-regels.
+Lees .autoresearch/autoresearch.md en .autoresearch/autoresearch.jsonl voor context.
+Run ./.autoresearch/autoresearch.sh als benchmark en parse METRIC-regels.
 Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide tool voor keep/discard/stop.
-Leg de beslissing vast in .agents/autoresearch/autoresearch.jsonl.
+Leg de beslissing vast in .autoresearch/autoresearch.jsonl.
 Stop als budget, safety, corrupt state, noisy metrics, of correctness failures van toepassing zijn.`;
 
 export function buildContinuationMessage(

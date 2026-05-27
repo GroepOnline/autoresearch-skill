@@ -1,7 +1,7 @@
 #!/usr/bin/env bash
 set -euo pipefail
 
-echo "Bootstrapping local environment for GroepChef/autoresearch-skill"
+echo "Bootstrapping local environment for OnlineChefGroep/autoresearch-skill"
 
 mkdir -p .artifacts .artifacts/screenshots .artifacts/computer-use .state
 

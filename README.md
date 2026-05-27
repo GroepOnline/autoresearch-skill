@@ -34,7 +34,7 @@ pi-autoresearch/
 From GitHub:
 
 ```bash
-pi install git:https://github.com/OnlineChef/autoresearch-skill
+pi install git:https://github.com/OnlineChefGroep/autoresearch-skill
 ```
 
 From a local checkout:
@@ -119,14 +119,14 @@ The `/autoresearch dashboard` command shows a standard dashboard with performanc
 ## Runtime files created in target repositories
 
 ```text
-.agents/autoresearch/autoresearch.md
-.agents/autoresearch/autoresearch.jsonl
-.agents/autoresearch/AUTORESEARCH_STATE.json
-.agents/autoresearch/autoresearch-dashboard.md
-.agents/autoresearch/autoresearch.ideas.md
-.agents/autoresearch/worklog.md
+.autoresearch/autoresearch.md
+.autoresearch/autoresearch.jsonl
+.autoresearch/AUTORESEARCH_STATE.json
+.autoresearch/autoresearch-dashboard.md
+.autoresearch/autoresearch.ideas.md
+.autoresearch/worklog.md
 experiments/summary-{timestamp}.md
-.agents/autoresearch/.autoresearch-off
+.autoresearch/.autoresearch-off
 ```
 
 These files are created in the target project, not in this package repository.
@@ -151,7 +151,7 @@ Autoresearch is intentionally bounded. It stops or blocks continuation on:
 
 ## Benchmark contract
 
-The default generated benchmark script is `./.agents/autoresearch/autoresearch.sh`. It must print at least one parseable metric line:
+The default generated benchmark script is `./.autoresearch/autoresearch.sh`. It must print at least one parseable metric line:
 
 ```text
 METRIC run_seconds=1.234 direction=lower

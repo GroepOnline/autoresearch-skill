@@ -177,7 +177,7 @@ test("readState blocks oversized JSONL files", () => {
   assert.ok(state.parseErrors.some((error) => error.includes("too many lines")));
 });
 
-test("ensureArtifactsLayout creates .agents/autoresearch directory", () => {
+test("ensureArtifactsLayout creates .autoresearch directory", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
   const p = paths(cwd);
 
@@ -188,21 +188,21 @@ test("ensureArtifactsLayout creates .agents/autoresearch directory", () => {
   assert.ok(existsSync(p.dir));
 });
 
-test("ensureArtifactsLayout migrates from .autoresearch/ directory", () => {
+test("ensureArtifactsLayout migrates from legacy .agents/autoresearch/ directory", () => {
   const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
   const p = paths(cwd);
 
-  // Create old .autoresearch/ directory with files
-  const oldDir = p.legacy.oldDir;
-  mkdirSync(oldDir, { recursive: true });
-  writeFileSync(join(oldDir, "autoresearch.jsonl"), '{"type":"config"}\n');
-  writeFileSync(join(oldDir, "autoresearch.md"), "# Test\n");
-  writeFileSync(join(oldDir, ".autoresearch-off"), "paused\n");
+  // Create previous .agents/autoresearch/ directory with files.
+  const agentsDir = p.legacy.agentsDir;
+  mkdirSync(agentsDir, { recursive: true });
+  writeFileSync(join(agentsDir, "autoresearch.jsonl"), '{"type":"config"}\n');
+  writeFileSync(join(agentsDir, "autoresearch.md"), "# Test\n");
+  writeFileSync(join(agentsDir, ".autoresearch-off"), "paused\n");
 
   ensureArtifactsLayout(cwd);
 
-  // Old directory should be cleaned up (or empty)
-  assert.ok(!existsSync(join(oldDir, "autoresearch.jsonl")));
+  // Previous directory should be cleaned up (or empty)
+  assert.ok(!existsSync(join(agentsDir, "autoresearch.jsonl")));
 
   // Files should be in new location
   assert.ok(existsSync(p.jsonl));

@@ -148,7 +148,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     name: "autoresearch_state",
     label: "Autoresearch State",
     description:
-      "Read and validate .agents/autoresearch/autoresearch.jsonl. Returns config, run counts, baseline, current best, and parse errors.",
+      "Read and validate .autoresearch/autoresearch.jsonl. Returns config, run counts, baseline, current best, and parse errors.",
     promptSnippet: "Read and validate the autoresearch JSONL state",
     promptGuidelines: [
       "Use autoresearch_state to inspect the current experiment before starting or resuming a run.",
@@ -159,7 +159,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       const state = readState(ctx.cwd);
 
       if (state.parseErrors.length > 0) {
-        throw new Error(`.agents/autoresearch/autoresearch.jsonl parse errors:\n${state.parseErrors.join("\n")}`);
+        throw new Error(`.autoresearch/autoresearch.jsonl parse errors:\n${state.parseErrors.join("\n")}`);
       }
 
       const config = state.config;
@@ -212,7 +212,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       "Parse METRIC lines from benchmark output and compute median summary. Input: raw benchmark stdout text.",
     promptSnippet: "Parse METRIC lines from benchmark output and compute medians",
     promptGuidelines: [
-      "Use autoresearch_metric to parse benchmark output after running ./.agents/autoresearch/autoresearch.sh.",
+      "Use autoresearch_metric to parse benchmark output after running ./.autoresearch/autoresearch.sh.",
       "Pass the full stdout; autoresearch_metric extracts METRIC name=value lines and computes the median.",
     ],
     parameters: {
@@ -303,7 +303,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     promptSnippet: "Decide keep/discard/stop for a candidate metric against current best",
     promptGuidelines: [
       "Use autoresearch_decide after measuring a candidate to get a keep/discard/stop decision.",
-      "Always call autoresearch_decide before writing a decision event to .agents/autoresearch/autoresearch.jsonl.",
+      "Always call autoresearch_decide before writing a decision event to .autoresearch/autoresearch.jsonl.",
     ],
     parameters: {
       type: "object",
@@ -349,7 +349,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     name: "autoresearch_dashboard",
     label: "Autoresearch Dashboard",
     description:
-      "Generate a markdown dashboard summary from .agents/autoresearch/autoresearch.jsonl. Includes config, run history, and best result.",
+      "Generate a markdown dashboard summary from .autoresearch/autoresearch.jsonl. Includes config, run history, and best result.",
     promptSnippet: "Generate a markdown dashboard from autoresearch JSONL state",
     promptGuidelines: [
       "Use autoresearch_dashboard to summarize the experiment progress and best results.",
@@ -360,7 +360,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       properties: {
         write_file: {
           type: "boolean",
-          description: "If true, write dashboard to .agents/autoresearch/autoresearch-dashboard.md. Default: false.",
+          description: "If true, write dashboard to .autoresearch/autoresearch-dashboard.md. Default: false.",
         },
       },
       additionalProperties: false,

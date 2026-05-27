@@ -200,12 +200,12 @@ test("SKILL.md references the required protocol documents", () => {
 test("SKILL.md lists the default runtime artifacts", () => {
   const content = readText("skills/autoresearch/SKILL.md");
   const artifacts = [
-    ".agents/autoresearch/autoresearch.md",
-    ".agents/autoresearch/autoresearch.jsonl",
-    ".agents/autoresearch/AUTORESEARCH_STATE.json",
-    ".agents/autoresearch/autoresearch-dashboard.md",
-    ".agents/autoresearch/worklog.md",
-    ".agents/autoresearch/.autoresearch-off",
+    ".autoresearch/autoresearch.md",
+    ".autoresearch/autoresearch.jsonl",
+    ".autoresearch/AUTORESEARCH_STATE.json",
+    ".autoresearch/autoresearch-dashboard.md",
+    ".autoresearch/worklog.md",
+    ".autoresearch/.autoresearch-off",
   ];
   for (const artifact of artifacts) {
     assert.ok(content.includes(artifact), `SKILL.md must list runtime artifact: ${artifact}`);
