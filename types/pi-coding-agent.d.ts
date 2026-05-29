@@ -1,4 +1,4 @@
-declare module "@mariozechner/pi-coding-agent" {
+declare module "@earendil-works/pi-coding-agent" {
   export interface ExtensionAPI {
     on(event: string, handler: (event: any, ctx: any) => Promise<any> | any): void;
     registerCommand(name: string, command: {
