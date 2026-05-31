@@ -395,6 +395,11 @@ async function main() {
     }
   }
 
+  // Write PID file so Stop hook can detect active runs
+  const PID_FILE = join(STATE_DIR, "runner.pid");
+  writeFileSync(PID_FILE, String(process.pid));
+  process.on("exit", () => { try { unlinkSync(PID_FILE); } catch {} });
+
   // Test LLM connection
   console.log("\nTesting LLM connection...");
   try {
