@@ -361,6 +361,14 @@ function analyzeSkill(filePath) {
   if (content.length < 200) issues.push("Skill file is too short (<200 chars)");
   if (content.length > 10000) issues.push("Skill file is too long (>10000 chars)");
 
+  // Also check quality score — low score = room for improvement
+  try {
+    const measurement = runBenchmark(filePath);
+    if (measurement && measurement.value < 85) {
+      issues.push(`Low quality score: ${measurement.value}/100`);
+    }
+  } catch {}
+
   return { filePath, content, issues, hasIssues: issues.length > 0 };
 }
 
