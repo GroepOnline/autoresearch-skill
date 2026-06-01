@@ -24,6 +24,7 @@ const MODEL = process.argv.find((_, i, a) => a[i - 1] === "--model") || (PROVIDE
 const MAX_RUNS = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--max-runs") || "10");
 const MAX_MINUTES = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--max-minutes") || "60");
 const TARGET_DIR = process.argv.find((_, i, a) => a[i - 1] === "--target") || resolve(process.cwd(), "../skill-grinder");
+const SKILL_FILTER = process.argv.find((_, i, a) => a[i - 1] === "--skill") || null; // comma-separated skill names
 const STATE_DIR = join(TARGET_DIR, ".autoresearch");
 const JSONL_PATH = join(STATE_DIR, "autoresearch.jsonl");
 const DASHBOARD_PATH = join(STATE_DIR, "autoresearch-dashboard.md");
@@ -331,10 +332,18 @@ function decideMetric(result) {
 function getSkillFiles() {
   try {
     const result = execSync(
-      `find "${TARGET_DIR}" -name "SKILL.md" -type f | head -20`,
+      `find "${TARGET_DIR}" -name "SKILL.md" -type f | head -200`,
       { encoding: "utf-8", timeout: 10000 }
     );
-    return result.trim().split("\n").filter(Boolean);
+    let files = result.trim().split("\n").filter(Boolean);
+    if (SKILL_FILTER) {
+      const names = SKILL_FILTER.split(",").map(s => s.trim().toLowerCase());
+      files = files.filter(f => {
+        const dir = f.replace(/\/SKILL\.md$/, "").split("/").pop().toLowerCase();
+        return names.includes(dir);
+      });
+    }
+    return files;
   } catch {
     return [];
   }
