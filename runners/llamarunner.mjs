@@ -481,6 +481,11 @@ async function main() {
     // Ask LLM for improvement
     console.log("Asking LLM for improvement...");
     try {
+      // Measure BEFORE improvement
+      const beforeMeasurement = runBenchmark(targetFile);
+      const beforeScore = beforeMeasurement?.value ?? 0;
+      console.log(`Score before: ${beforeScore}`);
+
       const fixes = await llmGetFixes(analysis.content, analysis.issues.join("\n"));
       const improved = applyFixes(analysis.content, fixes);
 
@@ -498,9 +503,9 @@ async function main() {
       }
       console.log("Improvement applied, running benchmark...");
 
-      // Measure per-skill (not global average — one skill improvement is diluted across 274 skills)
-      const measurement = runBenchmark(targetFile);
-      if (!measurement) {
+      // Measure AFTER improvement
+      const afterMeasurement = runBenchmark(targetFile);
+      if (!afterMeasurement) {
         if (!DRY_RUN) {
           console.log("Benchmark failed, reverting...");
           writeFileSync(targetFile, backup);
@@ -510,10 +515,28 @@ async function main() {
         continue;
       }
 
+      const afterScore = afterMeasurement.value;
+      console.log(`Score after: ${afterScore} (was: ${beforeScore})`);
+
+      // Decide based on per-skill before/after comparison
+      const delta = afterScore - beforeScore;
+      const deltaPct = beforeScore > 0 ? (delta / beforeScore) * 100 : (afterScore > 0 ? 100 : 0);
+      const aboveNoise = Math.abs(deltaPct) >= (config?.noise_floor_pct || 5);
+      const isImprovement = delta > 0;
+
+      let decision;
+      if (isImprovement && aboveNoise) {
+        decision = { action: "keep", reason: `improved by ${deltaPct.toFixed(1)}% (${beforeScore} → ${afterScore})` };
+      } else if (isImprovement) {
+        decision = { action: "discard", reason: `improvement ${deltaPct.toFixed(1)}% below noise floor` };
+      } else {
+        decision = { action: "discard", reason: `no improvement (${deltaPct.toFixed(1)}%)` };
+      }
+
       const result = {
         run: ++runCount,
         metric: "skill_quality",
-        value: measurement.value,
+        value: afterScore,
         status: "measured",
         description: `improved ${targetFile.split("/").pop()}`,
         timestamp: Date.now(),
@@ -522,20 +545,16 @@ async function main() {
       if (!DRY_RUN) {
         appendJsonl(result);
       }
-      console.log(`Measured: ${measurement.value} (was: ${baselineMetric})`);
 
-      // Decide
-      const decision = decideMetric(result);
       console.log(`Decision: ${decision.action} — ${decision.reason}`);
 
       if (decision.action === "keep") {
         result.status = "keep";
-        bestMetric = measurement.value;
+        bestMetric = afterScore;
         bestRun = runCount;
         keptCount++;
         consecutiveDiscards = 0;
         runsSinceLastImprovement = 0;
-        baselineMetric = measurement.value;
         if (DRY_RUN) {
           console.log("[DRY RUN] Would KEEP improvement");
         } else {
