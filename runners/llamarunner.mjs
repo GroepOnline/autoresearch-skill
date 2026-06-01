@@ -475,8 +475,31 @@ async function main() {
       break;
     }
 
-    // Pick a random skill (Ralph Wiggum: naive exploration)
-    const targetFile = skillFiles[Math.floor(Math.random() * skillFiles.length)];
+    // Score all skills and pick low-scoring ones preferentially
+    const scoredSkills = skillFiles.map(f => {
+      try {
+        const m = runBenchmark(f);
+        return { file: f, score: m?.value ?? 0 };
+      } catch { return { file: f, score: 100 }; }
+    }).filter(s => s.score < 90); // Only target skills below 90
+
+    let targetFile;
+    if (scoredSkills.length > 0) {
+      // Weight toward lowest scores (exponential bias)
+      scoredSkills.sort((a, b) => a.score - b.score);
+      const weights = scoredSkills.map((_, i) => Math.pow(scoredSkills.length - i, 2));
+      const totalWeight = weights.reduce((a, b) => a + b, 0);
+      let r = Math.random() * totalWeight;
+      for (let i = 0; i < scoredSkills.length; i++) {
+        r -= weights[i];
+        if (r <= 0) { targetFile = scoredSkills[i].file; break; }
+      }
+      targetFile = targetFile || scoredSkills[0].file;
+      console.log(`Smart pick: ${targetFile.split("/").slice(-2, -1)[0]} (score: ${scoredSkills.find(s => s.file === targetFile)?.score})`);
+    } else {
+      console.log("All skills above 90 — nothing to improve");
+      break;
+    }
     const analysis = analyzeSkill(targetFile);
 
     if (!analysis.hasIssues) {
