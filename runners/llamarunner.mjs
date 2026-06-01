@@ -332,7 +332,7 @@ function decideMetric(result) {
 function getSkillFiles() {
   try {
     const result = execSync(
-      `find "${TARGET_DIR}" -name "SKILL.md" -type f | head -200`,
+      `find "${TARGET_DIR}" -name "SKILL.md" -type f -not -path "*/_imported/*" -not -path "*/_archive/*" -not -path "*/_testing/*" | head -200`,
       { encoding: "utf-8", timeout: 10000 }
     );
     let files = result.trim().split("\n").filter(Boolean);
