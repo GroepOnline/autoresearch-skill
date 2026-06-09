@@ -1,5 +1,7 @@
 # Repository Guidelines
 
+> Extended build/style notes. **Agent entry:** [`../AGENTS.md`](../AGENTS.md) — pre-context, skills registry, sub-agent matrix.
+
 ## Project Structure & Module Organization
 
 This repository contains the **Autoresearch Skill** — a bounded, benchmark-driven optimization loop for the Pi Coding Agent. Key directories:
