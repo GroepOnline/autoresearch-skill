@@ -8,6 +8,6 @@ on:
 
 jobs:
   ci:
-    uses: OnlineChefGroep/.github/.github/workflows/ci.yml@master
+    uses: GroepOnline/.github/.github/workflows/ci.yml@master
     with:
       language: node
