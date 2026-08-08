@@ -196,10 +196,16 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     ctx.ui.setStatus("autoresearch", footerText(state));
 
     if (state.hasIdeas) {
-      const lines = fs.readFileSync(paths(ctx.cwd).ideas, "utf-8").split("\n");
-      const count = lines.filter(l => l.startsWith("- ")).length;
-      if (count > 0)
-        ctx.ui.notify(`💡 autoresearch.ideas.md heeft ${count} ideeën`, "info");
+      void fs.promises.readFile(paths(ctx.cwd).ideas, "utf-8")
+        .then((raw) => {
+          const count = raw.split("\n").filter(l => l.startsWith("- ")).length;
+          if (count > 0) {
+            ctx.ui.notify(`💡 autoresearch.ideas.md heeft ${count} ideeën`, "info");
+          }
+        })
+        .catch(() => {
+          // best effort only; no startup disruption
+        });
     }
   });
 
