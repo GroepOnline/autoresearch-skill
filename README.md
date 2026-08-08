@@ -18,7 +18,7 @@ Autonomous experiment loop: try ideas, keep what works, discard what doesn't, ne
 ```bash
 # In agent config, add as skill:
 skills:
-  - path: GroepChef/autoresearch-skill
+  - path: GroepOnline/autoresearch-skill
 ```
 
 ## Compatibility
