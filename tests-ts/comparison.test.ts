@@ -25,9 +25,7 @@ test("comparison benchmark outputs valid METRIC lines", () => {
   });
 
   // Check for METRIC lines in the output
-  const metricLines = output
-    .split("\n")
-    .filter((line) => line.startsWith("METRIC "));
+  const metricLines = output.split("\n").filter((line) => line.startsWith("METRIC "));
 
   assert.ok(metricLines.length > 0, "Should output at least one METRIC line");
 

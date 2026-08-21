@@ -3,9 +3,17 @@ import { spawnSync } from "node:child_process";
 
 const testArgs = ["-m", "unittest", "discover", "-s", "tests", "-p", "test_*.py"];
 const configured = process.env.PYTHON ? [[process.env.PYTHON, []]] : [];
-const platformCandidates = process.platform === "win32"
-  ? [["python", []], ["python3", []], ["py", ["-3"]]]
-  : [["python3", []], ["python", []]];
+const platformCandidates =
+  process.platform === "win32"
+    ? [
+        ["python", []],
+        ["python3", []],
+        ["py", ["-3"]],
+      ]
+    : [
+        ["python3", []],
+        ["python", []],
+      ];
 
 for (const [command, prefixArgs] of [...configured, ...platformCandidates]) {
   const result = spawnSync(command, [...prefixArgs, ...testArgs], { stdio: "inherit" });

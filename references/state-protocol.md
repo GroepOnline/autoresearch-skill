@@ -15,7 +15,19 @@
 ### Config
 
 ```json
-{"type":"config","schema_version":1,"name":"optimize-parser","metric":"latency_ms","direction":"lower","unit":"ms","min_effect_size_pct":3,"noise_floor_pct":2,"max_runs":30,"max_minutes":60,"created_at":"2026-05-06T12:00:00Z"}
+{
+  "type": "config",
+  "schema_version": 1,
+  "name": "optimize-parser",
+  "metric": "latency_ms",
+  "direction": "lower",
+  "unit": "ms",
+  "min_effect_size_pct": 3,
+  "noise_floor_pct": 2,
+  "max_runs": 30,
+  "max_minutes": 60,
+  "created_at": "2026-05-06T12:00:00Z"
+}
 ```
 
 Required fields:
@@ -40,7 +52,18 @@ Recommended fields:
 ### Result
 
 ```json
-{"type":"result","run":2,"commit":"abc1234","metric":"latency_ms","value":12.4,"samples":[12.8,12.1,12.3,12.4,12.5],"median":12.4,"status":"measured","timestamp":"2026-05-06T12:04:00Z","description":"remove redundant cache key generation"}
+{
+  "type": "result",
+  "run": 2,
+  "commit": "abc1234",
+  "metric": "latency_ms",
+  "value": 12.4,
+  "samples": [12.8, 12.1, 12.3, 12.4, 12.5],
+  "median": 12.4,
+  "status": "measured",
+  "timestamp": "2026-05-06T12:04:00Z",
+  "description": "remove redundant cache key generation"
+}
 ```
 
 Required fields:
@@ -54,7 +77,13 @@ Required fields:
 ### Decision
 
 ```json
-{"type":"decision","run":2,"action":"keep","reason":"median improved 8.2 pct over best and tests passed","timestamp":"2026-05-06T12:05:00Z"}
+{
+  "type": "decision",
+  "run": 2,
+  "action": "keep",
+  "reason": "median improved 8.2 pct over best and tests passed",
+  "timestamp": "2026-05-06T12:05:00Z"
+}
 ```
 
 Required fields:

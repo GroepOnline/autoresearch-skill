@@ -3,7 +3,12 @@ import { mkdirSync, mkdtempSync, unlinkSync, writeFileSync, existsSync } from "n
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { ensureArtifactsLayout, parseStartBudgets, paths, readState } from "../extensions/autoresearch/state.js";
+import {
+  ensureArtifactsLayout,
+  parseStartBudgets,
+  paths,
+  readState,
+} from "../extensions/autoresearch/state.js";
 import { dashboardRows, footerText, statusText } from "../extensions/autoresearch/ui.js";
 
 function tempProject(): string {

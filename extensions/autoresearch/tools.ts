@@ -159,7 +159,9 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       const state = readState(ctx.cwd);
 
       if (state.parseErrors.length > 0) {
-        throw new Error(`.autoresearch/autoresearch.jsonl parse errors:\n${state.parseErrors.join("\n")}`);
+        throw new Error(
+          `.autoresearch/autoresearch.jsonl parse errors:\n${state.parseErrors.join("\n")}`
+        );
       }
 
       const config = state.config;
@@ -360,7 +362,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       properties: {
         write_file: {
           type: "boolean",
-          description: "If true, write dashboard to .autoresearch/autoresearch-dashboard.md. Default: false.",
+          description:
+            "If true, write dashboard to .autoresearch/autoresearch-dashboard.md. Default: false.",
         },
       },
       additionalProperties: false,

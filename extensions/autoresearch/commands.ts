@@ -307,7 +307,10 @@ export function registerAutoresearchCommand(
           pi.appendEntry("autoresearch-loop", null);
           const state = readState(ctx.cwd);
           ctx.ui.setStatus("autoresearch", footerText(state));
-          ctx.ui.notify("🚪 Autoresearch loop gestopt. Gebruik /autoresearch start of /autoresearch ralph om opnieuw te beginnen.", "info");
+          ctx.ui.notify(
+            "🚪 Autoresearch loop gestopt. Gebruik /autoresearch start of /autoresearch ralph om opnieuw te beginnen.",
+            "info"
+          );
           return;
         }
 
@@ -417,7 +420,8 @@ export function ensureStartPrereqs(cwd: string, p: ReturnType<typeof paths>): St
   if (!fs.existsSync(p.context))
     return {
       state: readState(cwd),
-      blockMsg: ".autoresearch/autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
+      blockMsg:
+        ".autoresearch/autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
     };
   const benchmark = p.benchmark;
   if (!fs.existsSync(benchmark))

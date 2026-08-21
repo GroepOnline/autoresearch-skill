@@ -207,12 +207,10 @@ function printComparison() {
     const piScore = piScores.scores[key];
     const droidScore = droidScores.scores[key];
 
-    const piValue = typeof piScore.value === "boolean" 
-      ? (piScore.value ? "✓" : "✗") 
-      : piScore.value;
-    const droidValue = typeof droidScore.value === "boolean" 
-      ? (droidScore.value ? "✓" : "✗") 
-      : droidScore.value;
+    const piValue =
+      typeof piScore.value === "boolean" ? (piScore.value ? "✓" : "✗") : piScore.value;
+    const droidValue =
+      typeof droidScore.value === "boolean" ? (droidScore.value ? "✓" : "✗") : droidScore.value;
 
     console.log(
       `| ${criterion.description} | ${criterion.weight} | ${piValue} | ${droidValue} | ${piScore.weighted.toFixed(1)} | ${droidScore.weighted.toFixed(1)} |`
@@ -230,7 +228,9 @@ function printComparison() {
   console.log(`METRIC pi_overall_percentage=${piPercentage.toFixed(2)} direction=higher`);
   console.log(`METRIC droid_overall_score=${droidScores.totalScore.toFixed(2)} direction=higher`);
   console.log(`METRIC droid_overall_percentage=${droidPercentage.toFixed(2)} direction=higher`);
-  console.log(`METRIC score_difference=${(piScores.totalScore - droidScores.totalScore).toFixed(2)} direction=neutral`);
+  console.log(
+    `METRIC score_difference=${(piScores.totalScore - droidScores.totalScore).toFixed(2)} direction=neutral`
+  );
   console.log();
 
   // Print feature analysis
@@ -300,14 +300,20 @@ function printComparison() {
   console.log("## Conclusion");
   console.log();
   if (piScores.totalScore > droidScores.totalScore) {
-    console.log(`Pi Autoresearch scores higher overall (${formatScore(piScores.totalScore, piScores.maxScore)} vs ${formatScore(droidScores.totalScore, droidScores.maxScore)})`);
+    console.log(
+      `Pi Autoresearch scores higher overall (${formatScore(piScores.totalScore, piScores.maxScore)} vs ${formatScore(droidScores.totalScore, droidScores.maxScore)})`
+    );
     console.log("due to stronger UI integration and safety features.");
   } else if (droidScores.totalScore > piScores.totalScore) {
-    console.log(`Droid Autoresearch scores higher overall (${formatScore(droidScores.totalScore, droidScores.maxScore)} vs ${formatScore(piScores.totalScore, piScores.maxScore)})`);
+    console.log(
+      `Droid Autoresearch scores higher overall (${formatScore(droidScores.totalScore, droidScores.maxScore)} vs ${formatScore(piScores.totalScore, piScores.maxScore)})`
+    );
     console.log("due to better resource efficiency and simplicity.");
   } else {
     console.log("Both systems score equally overall.");
-    console.log("The choice depends on your platform (Pi vs Factory.ai) and specific requirements.");
+    console.log(
+      "The choice depends on your platform (Pi vs Factory.ai) and specific requirements."
+    );
   }
   console.log();
 }

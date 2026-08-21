@@ -94,19 +94,21 @@ echo "$METRIC"
 
 ## Decision Matrix
 
-| Condition | Action | Rationale |
-|-----------|--------|-----------|
-| `metric < best` | ✅ KEEP — new best | Always keep improvements |
-| `metric == best` | ❌ DISCARD (unless simplification) | No gain, extra complexity |
-| `metric > baseline && metric < best` | ✅ KEEP | Incremental progress |
-| `metric > best` | ❌ DISCARD | Pure regression |
-| Any test failure | ❌ DISCARD immediately | Functional correctness > perf |
+| Condition                            | Action                             | Rationale                     |
+| ------------------------------------ | ---------------------------------- | ----------------------------- |
+| `metric < best`                      | ✅ KEEP — new best                 | Always keep improvements      |
+| `metric == best`                     | ❌ DISCARD (unless simplification) | No gain, extra complexity     |
+| `metric > baseline && metric < best` | ✅ KEEP                            | Incremental progress          |
+| `metric > best`                      | ❌ DISCARD                         | Pure regression               |
+| Any test failure                     | ❌ DISCARD immediately             | Functional correctness > perf |
 
 ## Logging Format
 
 `AUTORESEARCH_LOG.md`:
+
 ```markdown
 ## Run #2 — 2026-05-06T14:00:00+02:00
+
 - Metric: `METRIC fallback_latency_ms=2`
 - Action: **KEEP** — new best (-99.6% vs baseline)
 - Change: "Remove backoff while walking explicit fallbackModels chain"
@@ -118,6 +120,7 @@ echo "$METRIC"
 ## Variable Isolation Rule
 
 **One optimization per run.** Never bundle multiple independent changes:
+
 - ❌ Bad: "Remove backoff + bypass cache key gen + reuse backend"
 - ✅ Good: Three separate branches, three separate runs
 
@@ -133,26 +136,31 @@ If you suspect two changes interact, verify independently first, then test combi
 ## Pitfalls (Lessons from agent-runtime 2026-05-06)
 
 ### Noise-Driven Decisions
+
 - **Symptom**: Metric jumps 1ms → 5ms → 1ms across runs
 - **Fix**: Use **median of 5 runs** in benchmark harness
 - **Rule**: Variability > ±20% → increase run count or investigate GC/CPU noise
 
 ### Confounding Variables
+
 - **Symptom**: Change A "improves" but change B also present
 - **Fix**: Strict **one variable per run**. Max 20 lines diff per commit.
 - **Rule**: `git diff baseline` must show ≤ 20 lines changed.
 
 ### Metric vs Reality Gap
+
 - **Symptom**: Benchmark 1ms, production 100ms
 - **Causes**: Mocks bypass real I/O; metric measures wrong thing
 - **Fix**: Add **sanity-check smoke test** with real backend (slow but indicative). Track both: mock-based (iteration speed) + real-backend (ground truth).
 
 ### Backend Reuse Instability
+
 - **Symptom**: Reusing backend instance across retries reduces object allocation
 - **Reality**: SDK state leakage, session invalidation bugs
 - **Rule**: Keep **one fresh session per run** unless benchmark proves stability over 20+ iterations.
 
 ### Cache Bypass Blind Spot
+
 - **Symptom**: `useCache=false` still pays cache key generation cost
 - **Fix**: Early return before `makeCacheKey()` is called
 - **Metric impact**: 507ms → 1ms (cache bypass + backoff removal were both required)
@@ -160,6 +168,7 @@ If you suspect two changes interact, verify independently first, then test combi
 ## Output Artifacts
 
 After loop termination:
+
 - `AUTORESEARCH_STATE.json` — final best metric and run history
 - `AUTORESEARCH_LOG.md` — human-readable decision trail
 - `METRIC_BASELINE` — original baseline number (immutable reference)

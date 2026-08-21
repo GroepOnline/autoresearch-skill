@@ -63,7 +63,10 @@ function parseSimpleYaml(yaml: string): Record<string, Record<string, string>> {
     if (nestedMatch && currentSection) {
       let value = nestedMatch[2].trim();
       // Remove surrounding quotes if present
-      if ((value.startsWith('"') && value.endsWith('"')) || (value.startsWith("'") && value.endsWith("'"))) {
+      if (
+        (value.startsWith('"') && value.endsWith('"')) ||
+        (value.startsWith("'") && value.endsWith("'"))
+      ) {
         value = value.slice(1, -1);
       }
       result[currentSection][nestedMatch[1]] = value;
@@ -79,7 +82,7 @@ function parseSimpleYaml(yaml: string): Record<string, Record<string, string>> {
 test("skills/autoresearch/SKILL.md exists at the expected path", () => {
   assert.ok(
     existsSync(join(root, "skills/autoresearch/SKILL.md")),
-    "skills/autoresearch/SKILL.md must exist",
+    "skills/autoresearch/SKILL.md must exist"
   );
 });
 
@@ -89,19 +92,19 @@ test("skills/autoresearch/SKILL.md exists at the expected path", () => {
 
 test("SKILL.md has a YAML frontmatter block", () => {
   const content = readText("skills/autoresearch/SKILL.md");
-  assert.ok(
-    content.startsWith("---"),
-    "SKILL.md must start with a YAML frontmatter block (---)",
-  );
+  assert.ok(content.startsWith("---"), "SKILL.md must start with a YAML frontmatter block (---)");
   assert.ok(
     /^---\r?\n[\s\S]*?\r?\n---/m.test(content),
-    "SKILL.md must have a closing --- to end the frontmatter block",
+    "SKILL.md must have a closing --- to end the frontmatter block"
   );
 });
 
 test("SKILL.md frontmatter has a non-empty name field", () => {
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
-  assert.ok(typeof fm["name"] === "string" && fm["name"].length > 0, "frontmatter 'name' must be a non-empty string");
+  assert.ok(
+    typeof fm["name"] === "string" && fm["name"].length > 0,
+    "frontmatter 'name' must be a non-empty string"
+  );
 });
 
 test("SKILL.md frontmatter name matches the package name", () => {
@@ -113,7 +116,7 @@ test("SKILL.md frontmatter has a non-empty description field", () => {
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
   assert.ok(
     typeof fm["description"] === "string" && fm["description"].length > 20,
-    "frontmatter 'description' must be a meaningful non-empty string",
+    "frontmatter 'description' must be a meaningful non-empty string"
   );
 });
 
@@ -121,7 +124,7 @@ test("SKILL.md frontmatter description mentions autoresearch workflows", () => {
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
   assert.ok(
     fm["description"].toLowerCase().includes("autoresearch"),
-    "description should reference autoresearch",
+    "description should reference autoresearch"
   );
 });
 
@@ -131,7 +134,12 @@ test("SKILL.md frontmatter description mentions autoresearch workflows", () => {
 
 test("SKILL.md documents the Pi Extension commands", () => {
   const content = readText("skills/autoresearch/SKILL.md");
-  const commands = ["/autoresearch status", "/autoresearch start", "/autoresearch ralph", "/autoresearch pause"];
+  const commands = [
+    "/autoresearch status",
+    "/autoresearch start",
+    "/autoresearch ralph",
+    "/autoresearch pause",
+  ];
   for (const cmd of commands) {
     assert.ok(content.includes(cmd), `SKILL.md must mention command: ${cmd}`);
   }
@@ -166,14 +174,17 @@ test("SKILL.md describes both Assisted and Ralph modes", () => {
 
 test("SKILL.md includes a stop-conditions section", () => {
   const content = readText("skills/autoresearch/SKILL.md");
-  assert.ok(content.includes("Stop Conditions") || content.includes("stop condition"), "SKILL.md must have a Stop Conditions section");
+  assert.ok(
+    content.includes("Stop Conditions") || content.includes("stop condition"),
+    "SKILL.md must have a Stop Conditions section"
+  );
 });
 
 test("SKILL.md mentions the consecutive-discard limit (5)", () => {
   const content = readText("skills/autoresearch/SKILL.md");
   assert.ok(
     /5 consecutive discard/i.test(content),
-    "SKILL.md must state the consecutive-discard stop threshold of 5",
+    "SKILL.md must state the consecutive-discard stop threshold of 5"
   );
 });
 
@@ -181,17 +192,13 @@ test("SKILL.md mentions the plateau limit (10 runs)", () => {
   const content = readText("skills/autoresearch/SKILL.md");
   assert.ok(
     /10 runs without improvement/i.test(content),
-    "SKILL.md must state the plateau stop threshold of 10 runs",
+    "SKILL.md must state the plateau stop threshold of 10 runs"
   );
 });
 
 test("SKILL.md references the required protocol documents", () => {
   const content = readText("skills/autoresearch/SKILL.md");
-  const refs = [
-    "state-protocol.md",
-    "benchmark-policy.md",
-    "safety-policy.md",
-  ];
+  const refs = ["state-protocol.md", "benchmark-policy.md", "safety-policy.md"];
   for (const ref of refs) {
     assert.ok(content.includes(ref), `SKILL.md must reference protocol file: ${ref}`);
   }
@@ -216,7 +223,7 @@ test("SKILL.md decision rules state correctness beats performance", () => {
   const content = readText("skills/autoresearch/SKILL.md");
   assert.ok(
     /correctness beats performance/i.test(content),
-    "SKILL.md must state that correctness takes priority over performance",
+    "SKILL.md must state that correctness takes priority over performance"
   );
 });
 
@@ -227,7 +234,7 @@ test("SKILL.md decision rules state correctness beats performance", () => {
 test("skills/autoresearch/agents/openai.yaml exists at the expected path", () => {
   assert.ok(
     existsSync(join(root, "skills/autoresearch/agents/openai.yaml")),
-    "skills/autoresearch/agents/openai.yaml must exist",
+    "skills/autoresearch/agents/openai.yaml must exist"
   );
 });
 
@@ -246,7 +253,7 @@ test("openai.yaml interface.display_name is 'Autoresearch'", () => {
   assert.equal(
     parsed["interface"]["display_name"],
     "Autoresearch",
-    "interface.display_name must be 'Autoresearch'",
+    "interface.display_name must be 'Autoresearch'"
   );
 });
 
@@ -260,7 +267,7 @@ test("openai.yaml interface.short_description mentions optimization", () => {
   const yaml = readText("skills/autoresearch/agents/openai.yaml");
   assert.ok(
     /optim/i.test(yaml),
-    "short_description should mention optimization to describe the skill purpose",
+    "short_description should mention optimization to describe the skill purpose"
   );
 });
 
@@ -277,10 +284,7 @@ test("openai.yaml interface.icon is 'microscope'", () => {
 
 test("openai.yaml interface.brand_color is defined and non-empty", () => {
   const yaml = readText("skills/autoresearch/agents/openai.yaml");
-  assert.ok(
-    /brand_color\s*:/.test(yaml),
-    "openai.yaml must have a brand_color field",
-  );
+  assert.ok(/brand_color\s*:/.test(yaml), "openai.yaml must have a brand_color field");
 });
 
 test("openai.yaml interface.brand_color is a valid CSS hex colour", () => {
@@ -288,7 +292,7 @@ test("openai.yaml interface.brand_color is a valid CSS hex colour", () => {
   const color = parsed["interface"]?.["brand_color"] ?? "";
   assert.ok(
     /^#[0-9a-fA-F]{3,8}$/.test(color),
-    `brand_color must be a valid CSS hex colour, got: "${color}"`,
+    `brand_color must be a valid CSS hex colour, got: "${color}"`
   );
 });
 
@@ -303,13 +307,13 @@ test("SKILL.md name matches package.json name", () => {
 });
 
 test("skills/autoresearch/ is under the path declared in pi.skills", () => {
-  const pkg = JSON.parse(
-    readFileSync(join(root, "package.json"), "utf-8"),
-  ) as { pi: { skills: string[] } };
+  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as {
+    pi: { skills: string[] };
+  };
   // pi.skills = ["./skills"], so skills/autoresearch/ must be inside ./skills/
   const skillsBase = pkg.pi.skills[0].replace(/^\.\//, "");
   assert.ok(
     existsSync(join(root, skillsBase, "autoresearch/SKILL.md")),
-    `SKILL.md must be discoverable under the pi.skills path "${skillsBase}"`,
+    `SKILL.md must be discoverable under the pi.skills path "${skillsBase}"`
   );
 });

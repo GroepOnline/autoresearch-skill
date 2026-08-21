@@ -79,7 +79,9 @@ export function dashboardRows(state: ArState): string[] {
     rows.push(`📏 Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
   }
   if (state.bestMetric !== null && state.bestRun !== null) {
-    rows.push(`🏆 Best: ${fmt(state.bestMetric, metricUnit(config))} (Run #${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`);
+    rows.push(
+      `🏆 Best: ${fmt(state.bestMetric, metricUnit(config))} (Run #${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+    );
   }
 
   if (state.isPaused) {
@@ -107,7 +109,8 @@ export function dashboardRows(state: ArState): string[] {
             ? "💥"
             : "·";
     const d = state.baselineMetric !== null ? delta(result.value, state.baselineMetric) : "";
-    const description = result.description.length > 35 ? result.description.slice(0, 35) + "..." : result.description;
+    const description =
+      result.description.length > 35 ? result.description.slice(0, 35) + "..." : result.description;
     rows.push(
       `${String(result.run).padStart(3)} │ ${fmt(result.value, metricUnit(config)).padEnd(12)} │ ${icon} ${action.padEnd(8)} │ ${description} ${d}`
     );
@@ -177,7 +180,7 @@ function calculateStatistics(state: ArState): {
   const successRate = state.runCount > 0 ? (state.keptCount / state.runCount) * 100 : 0;
   const improvementRate = state.runCount > 0 ? (state.keptCount / state.runCount) * 100 : 0;
 
-  const values = state.results.map(r => r.value).filter(v => v !== null);
+  const values = state.results.map((r) => r.value).filter((v) => v !== null);
   const avgMetric = values.length > 0 ? values.reduce((a, b) => a + b, 0) / values.length : null;
 
   let medianMetric = null;
@@ -190,7 +193,7 @@ function calculateStatistics(state: ArState): {
   // Calculate standard deviation
   let stdDev = null;
   if (values.length > 1 && avgMetric !== null) {
-    const squaredDiffs = values.map(v => Math.pow(v - avgMetric, 2));
+    const squaredDiffs = values.map((v) => Math.pow(v - avgMetric, 2));
     const avgSquaredDiff = squaredDiffs.reduce((a, b) => a + b, 0) / values.length;
     stdDev = Math.sqrt(avgSquaredDiff);
   }
@@ -324,7 +327,10 @@ function generateAsciiChart(values: number[], width: number = 30, height: number
       const normalizedVal = (val - minVal) / range;
       const lineThreshold = i / (height - 1);
 
-      if (normalizedVal >= lineThreshold - 0.1 / height && normalizedVal <= lineThreshold + 0.1 / height) {
+      if (
+        normalizedVal >= lineThreshold - 0.1 / height &&
+        normalizedVal <= lineThreshold + 0.1 / height
+      ) {
         line += "●";
       } else if (normalizedVal > lineThreshold) {
         line += "│";
@@ -355,7 +361,7 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
 
   const config = state.config;
   const stats = calculateStatistics(state);
-  const values = state.results.map(r => r.value).filter(v => v !== null);
+  const values = state.results.map((r) => r.value).filter((v) => v !== null);
 
   const rows = [
     "",
@@ -370,9 +376,15 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("║  📊 PANE 1: SESSION INFORMATION                                      ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   rows.push("║  Name:        " + config.name.padEnd(48) + "║");
-  rows.push("║  Metric:      " + `${metricName(config)} (${direction(config)} = beter)`.padEnd(48) + "║");
+  rows.push(
+    "║  Metric:      " + `${metricName(config)} (${direction(config)} = beter)`.padEnd(48) + "║"
+  );
   rows.push("║  Unit:        " + (metricUnit(config) || "N/A").padEnd(48) + "║");
-  rows.push("║  Created:     " + (config.created_at ? new Date(config.created_at).toLocaleString() : "N/A").padEnd(48) + "║");
+  rows.push(
+    "║  Created:     " +
+      (config.created_at ? new Date(config.created_at).toLocaleString() : "N/A").padEnd(48) +
+      "║"
+  );
   rows.push("║  Status:      " + (state.isPaused ? "⏸️  PAUSED" : "▶️  ACTIVE").padEnd(48) + "║");
   rows.push("║  Momentum:    " + stats.momentum.padEnd(48) + "║");
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
@@ -383,24 +395,53 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("║  🎯 PANE 2: PERFORMANCE OVERVIEW                                    ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   rows.push("║  Total Runs:           " + String(state.runCount).padEnd(38) + "║");
-  rows.push("║  ✅ Kept:               " + `${state.keptCount} (${stats.keepRate.toFixed(1)}%) [${generateProgressBar(stats.keepRate, 100, 12)}]`.padEnd(38) + "║");
-  rows.push("║  ❌ Discarded:          " + `${state.discardedCount} (${stats.discardRate.toFixed(1)}%) [${generateProgressBar(stats.discardRate, 100, 12)}]`.padEnd(38) + "║");
-  rows.push("║  💥 Crashed:            " + `${state.crashedCount} (${stats.crashRate.toFixed(1)}%) [${generateProgressBar(stats.crashRate, 100, 12)}]`.padEnd(38) + "║");
+  rows.push(
+    "║  ✅ Kept:               " +
+      `${state.keptCount} (${stats.keepRate.toFixed(1)}%) [${generateProgressBar(stats.keepRate, 100, 12)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
+  rows.push(
+    "║  ❌ Discarded:          " +
+      `${state.discardedCount} (${stats.discardRate.toFixed(1)}%) [${generateProgressBar(stats.discardRate, 100, 12)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
+  rows.push(
+    "║  💥 Crashed:            " +
+      `${state.crashedCount} (${stats.crashRate.toFixed(1)}%) [${generateProgressBar(stats.crashRate, 100, 12)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   if (state.baselineMetric !== null) {
-    rows.push("║  📏 Baseline:            " + fmt(state.baselineMetric, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  📏 Baseline:            " + fmt(state.baselineMetric, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (state.bestMetric !== null && state.bestRun !== null) {
-    const improvement = state.baselineMetric !== null
-      ? delta(state.bestMetric, state.baselineMetric)
-      : "";
-    rows.push("║  🏆 Best:                " + `${fmt(state.bestMetric, metricUnit(config))} (Run #${state.bestRun}) ${improvement}`.padEnd(38) + "║");
+    const improvement =
+      state.baselineMetric !== null ? delta(state.bestMetric, state.baselineMetric) : "";
+    rows.push(
+      "║  🏆 Best:                " +
+        `${fmt(state.bestMetric, metricUnit(config))} (Run #${state.bestRun}) ${improvement}`.padEnd(
+          38
+        ) +
+        "║"
+    );
   }
   if (stats.minMetric !== null) {
-    rows.push("║  📊 Min:                 " + fmt(stats.minMetric, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  📊 Min:                 " + fmt(stats.minMetric, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (stats.maxMetric !== null) {
-    rows.push("║  📊 Max:                 " + fmt(stats.maxMetric, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  📊 Max:                 " + fmt(stats.maxMetric, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
   rows.push("");
@@ -409,23 +450,51 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("╔══════════════════════════════════════════════════════════════════════╗");
   rows.push("║  📈 PANE 3: SUCCESS ANALYTICS                                       ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
-  rows.push("║  Success Rate:          " + `${stats.successRate.toFixed(1)}% [${generateProgressBar(stats.successRate, 100, 15)}]`.padEnd(38) + "║");
-  rows.push("║  Improvement Rate:      " + `${stats.improvementRate.toFixed(1)}% [${generateProgressBar(stats.improvementRate, 100, 15)}]`.padEnd(38) + "║");
+  rows.push(
+    "║  Success Rate:          " +
+      `${stats.successRate.toFixed(1)}% [${generateProgressBar(stats.successRate, 100, 15)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
+  rows.push(
+    "║  Improvement Rate:      " +
+      `${stats.improvementRate.toFixed(1)}% [${generateProgressBar(stats.improvementRate, 100, 15)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
   rows.push("║  Recent Trend:          " + stats.recentTrend.padEnd(38) + "║");
   rows.push("║  Best Streak:           " + `${stats.bestStreak} keeps 🔥`.padEnd(38) + "║");
   rows.push("║  Current Streak:        " + `${stats.currentStreak} keeps ⚡`.padEnd(38) + "║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   if (stats.avgMetric !== null) {
-    rows.push("║  Average Metric:        " + fmt(stats.avgMetric, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Average Metric:        " + fmt(stats.avgMetric, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (stats.medianMetric !== null) {
-    rows.push("║  Median Metric:         " + fmt(stats.medianMetric, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Median Metric:         " + fmt(stats.medianMetric, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (stats.stdDev !== null) {
     rows.push("║  Std Deviation:         " + stats.stdDev.toFixed(4).padEnd(38) + "║");
   }
-  rows.push("║  Consistency:           " + `${stats.consistency.toFixed(1)}% [${generateProgressBar(stats.consistency, 100, 12)}]`.padEnd(38) + "║");
-  rows.push("║  Volatility:            " + `${stats.volatility.toFixed(1)}% [${generateProgressBar(Math.min(stats.volatility, 100), 100, 12)}]`.padEnd(38) + "║");
+  rows.push(
+    "║  Consistency:           " +
+      `${stats.consistency.toFixed(1)}% [${generateProgressBar(stats.consistency, 100, 12)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
+  rows.push(
+    "║  Volatility:            " +
+      `${stats.volatility.toFixed(1)}% [${generateProgressBar(Math.min(stats.volatility, 100), 100, 12)}]`.padEnd(
+        38
+      ) +
+      "║"
+  );
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
   rows.push("");
 
@@ -449,23 +518,37 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("║  ⏱️  PANE 5: TIME-SERIES ANALYSIS                                    ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   if (stats.recent5Avg !== null) {
-    rows.push("║  Last 5 Runs Avg:      " + fmt(stats.recent5Avg, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Last 5 Runs Avg:      " + fmt(stats.recent5Avg, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (stats.recent10Avg !== null) {
-    rows.push("║  Last 10 Runs Avg:     " + fmt(stats.recent10Avg, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Last 10 Runs Avg:     " + fmt(stats.recent10Avg, metricUnit(config)).padEnd(38) + "║"
+    );
   }
   if (stats.totalImprovement !== null) {
-    rows.push("║  Total Improvement:     " + fmt(stats.totalImprovement, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Total Improvement:     " +
+        fmt(stats.totalImprovement, metricUnit(config)).padEnd(38) +
+        "║"
+    );
   }
   if (stats.avgImprovementPerRun !== null) {
-    rows.push("║  Avg Improvement/Run:   " + fmt(stats.avgImprovementPerRun, metricUnit(config)).padEnd(38) + "║");
+    rows.push(
+      "║  Avg Improvement/Run:   " +
+        fmt(stats.avgImprovementPerRun, metricUnit(config)).padEnd(38) +
+        "║"
+    );
   }
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   // Add performance comparison
   if (stats.recent5Avg !== null && stats.recent10Avg !== null) {
     const diff = stats.recent5Avg - stats.recent10Avg;
     const diffStr = diff > 0 ? `+${fmt(diff, metricUnit(config))}` : fmt(diff, metricUnit(config));
-    rows.push("║  5 vs 10 Run Diff:     " + `${diffStr} (${diff > 0 ? 'worse' : 'better'})`.padEnd(38) + "║");
+    rows.push(
+      "║  5 vs 10 Run Diff:     " + `${diffStr} (${diff > 0 ? "worse" : "better"})`.padEnd(38) + "║"
+    );
   }
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
   rows.push("");
@@ -474,7 +557,13 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("╔══════════════════════════════════════════════════════════════════════╗");
   rows.push("║  📋 PANE 6: RESULTS HISTORY (Last 15)                               ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
-  rows.push("║  Run  │ " + metricName(config).padEnd(10) + " │ Status     │ Delta  │ Description" + " ".repeat(10) + "║");
+  rows.push(
+    "║  Run  │ " +
+      metricName(config).padEnd(10) +
+      " │ Status     │ Delta  │ Description" +
+      " ".repeat(10) +
+      "║"
+  );
   rows.push("║  ─────┴───────────────────┴────────────┴────────┴─────────────────────║");
 
   const recentResults = state.results.slice(-15).reverse();
@@ -490,9 +579,22 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
             ? "💥"
             : "·";
     const d = state.baselineMetric !== null ? delta(result.value, state.baselineMetric) : "N/A";
-    const description = result.description.length > 20 ? result.description.slice(0, 20) + "..." : result.description;
+    const description =
+      result.description.length > 20 ? result.description.slice(0, 20) + "..." : result.description;
     rows.push(
-      "║  " + String(result.run).padStart(4) + " │ " + fmt(result.value, metricUnit(config)).padEnd(10) + " │ " + icon + " " + action.padEnd(9) + " │ " + d.padEnd(6) + " │ " + description.padEnd(30) + "║"
+      "║  " +
+        String(result.run).padStart(4) +
+        " │ " +
+        fmt(result.value, metricUnit(config)).padEnd(10) +
+        " │ " +
+        icon +
+        " " +
+        action.padEnd(9) +
+        " │ " +
+        d.padEnd(6) +
+        " │ " +
+        description.padEnd(30) +
+        "║"
     );
   }
 
@@ -506,14 +608,35 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("║  Total Decisions:       " + String(state.decisions.length).padEnd(38) + "║");
   rows.push("║  Keep Decisions:        " + String(state.keptCount).padEnd(38) + "║");
   rows.push("║  Discard Decisions:     " + String(state.discardedCount).padEnd(38) + "║");
-  rows.push("║  Stop Decisions:        " + String(state.decisions.filter(d => d.action === "stop").length).padEnd(38) + "║");
+  rows.push(
+    "║  Stop Decisions:        " +
+      String(state.decisions.filter((d) => d.action === "stop").length).padEnd(38) +
+      "║"
+  );
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
   const recentDecisions = state.decisions.slice(-5);
   if (recentDecisions.length > 0) {
     rows.push("║  Recent Decisions:                                                  ║");
     for (const decision of recentDecisions) {
-      const icon = decision.action === "keep" ? "✅" : decision.action === "discard" ? "❌" : decision.action === "stop" ? "🛑" : "·";
-      rows.push("║    Run #" + decision.run + ": " + icon + " " + decision.action.padEnd(8) + " - " + (decision.reason?.slice(0, 40) || "").padEnd(40) + "║");
+      const icon =
+        decision.action === "keep"
+          ? "✅"
+          : decision.action === "discard"
+            ? "❌"
+            : decision.action === "stop"
+              ? "🛑"
+              : "·";
+      rows.push(
+        "║    Run #" +
+          decision.run +
+          ": " +
+          icon +
+          " " +
+          decision.action.padEnd(8) +
+          " - " +
+          (decision.reason?.slice(0, 40) || "").padEnd(40) +
+          "║"
+      );
     }
   }
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
@@ -542,7 +665,11 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("║  Parse Errors:          " + String(state.parseErrors.length).padEnd(38) + "║");
   rows.push("║  Ideas File Present:    " + (state.hasIdeas ? "✓ Yes" : "✗ No").padEnd(38) + "║");
   rows.push("║  Results Recorded:       " + String(state.results.length).padEnd(38) + "║");
-  rows.push("║  Data Quality:          " + (state.parseErrors.length === 0 ? "✓ Excellent" : "⚠ Issues").padEnd(38) + "║");
+  rows.push(
+    "║  Data Quality:          " +
+      (state.parseErrors.length === 0 ? "✓ Excellent" : "⚠ Issues").padEnd(38) +
+      "║"
+  );
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
   rows.push("");
 
@@ -550,11 +677,29 @@ export function dashboardRowsFullscreen(state: ArState): string[] {
   rows.push("╔══════════════════════════════════════════════════════════════════════╗");
   rows.push("║  🏥 PANE 10: SYSTEM HEALTH STATUS                                   ║");
   rows.push("╠══════════════════════════════════════════════════════════════════════╣");
-  const healthScore = Math.max(0, 100 - (state.parseErrors.length * 10) - (state.crashedCount * 5));
-  rows.push("║  Overall Health:        " + `${healthScore.toFixed(0)}% [${generateProgressBar(healthScore, 100, 15)}]`.padEnd(38) + "║");
-  rows.push("║  Data Integrity:        " + (state.parseErrors.length === 0 ? "✓ Clean" : `⚠ ${state.parseErrors.length} errors`).padEnd(38) + "║");
-  rows.push("║  Stability:             " + (state.crashedCount === 0 ? "✓ Stable" : `⚠ ${state.crashedCount} crashes`).padEnd(38) + "║");
-  rows.push("║  Progress:              " + (stats.currentStreak > 2 ? "✓ Advancing" : "→ Building").padEnd(38) + "║");
+  const healthScore = Math.max(0, 100 - state.parseErrors.length * 10 - state.crashedCount * 5);
+  rows.push(
+    "║  Overall Health:        " +
+      `${healthScore.toFixed(0)}% [${generateProgressBar(healthScore, 100, 15)}]`.padEnd(38) +
+      "║"
+  );
+  rows.push(
+    "║  Data Integrity:        " +
+      (state.parseErrors.length === 0 ? "✓ Clean" : `⚠ ${state.parseErrors.length} errors`).padEnd(
+        38
+      ) +
+      "║"
+  );
+  rows.push(
+    "║  Stability:             " +
+      (state.crashedCount === 0 ? "✓ Stable" : `⚠ ${state.crashedCount} crashes`).padEnd(38) +
+      "║"
+  );
+  rows.push(
+    "║  Progress:              " +
+      (stats.currentStreak > 2 ? "✓ Advancing" : "→ Building").padEnd(38) +
+      "║"
+  );
   rows.push("╚══════════════════════════════════════════════════════════════════════╝");
   rows.push("");
 
