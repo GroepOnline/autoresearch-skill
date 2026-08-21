@@ -17,6 +17,9 @@ jobs:
           GH_TOKEN: ${{ github.token }}
         run: |
           set -euo pipefail
+          # Self-hosted runners persist _work between jobs: a stale repo/ from a
+          # previous run would make `git remote add` fail. Start clean every time.
+          rm -rf repo
           git init repo
           cd repo
           git remote add origin "https://x-access-token:${GH_TOKEN}@github.com/${GITHUB_REPOSITORY}.git"
