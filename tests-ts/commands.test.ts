@@ -46,7 +46,10 @@ test("archiveArtifacts creates timestamped archive with correct format", async (
   const archivePath = archiveArtifacts(cwd, p.dir);
 
   // Archive path should be in experiments/archive/ with timestamp (colons replaced with dashes)
-  assert.match(archivePath.replaceAll("\\", "/"), /experiments\/archive\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/);
+  assert.match(
+    archivePath.replaceAll("\\", "/"),
+    /experiments\/archive\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/
+  );
 
   // Verify content is preserved
   const archivedJsonl = readFileSync(join(archivePath, "autoresearch.jsonl"), "utf-8");

@@ -18,15 +18,15 @@ The repository has been upgraded from a skill-first archive into a complete Pi p
 
 ## Original issues found
 
-| Area | Issue | Risk | Fix |
-| --- | --- | --- | --- |
-| Product shape | Repository still presented itself primarily as a skill. | User expectation was a full `pi.dev` extension/package. | Repositioned README and package metadata around Pi package + native extension. |
-| Pi layout | Skill lived only at repository root with `pi.skills: ["."]`. | Works as a manifest path, but is less conventional and easy to confuse with a pure skill upload. | Added `skills/autoresearch/SKILL.md` and changed manifest to `pi.skills: ["./skills"]`. |
-| Packaging | `scripts/package-clean.mjs` crashed after `npm pack` because it expected `stdout` while running with inherited stdio. | Release command failed after producing the tarball. | Made packaging script tolerate inherited stdio and return a stable tarball path. |
-| Metadata | `private: true` and old `GroepChef` repository URL conflicted with distributable package intent. | Package could not be published cleanly and pointed to the wrong GitHub org. | Removed private flag and updated repository/homepage/bugs to `OnlineChef`. |
-| Discoverability | Keywords were minimal. | Pi package catalog/npm discovery weaker. | Added `pi-package`, `pi-extension`, `pi-skill`, `agent-skill`, `optimization`, `coding-agent`. |
-| Docs | README install commands and project description were still skill-oriented. | Users would install or evaluate it as the wrong artifact type. | Rewrote README around extension commands, tools, hooks, runtime files and release flow. |
-| Validation | Tests existed but final packaging was not part of a clean release path. | A green test suite could still leave a broken package command. | Re-ran validation and fixed package generation. |
+| Area            | Issue                                                                                                                 | Risk                                                                                             | Fix                                                                                            |
+| --------------- | --------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------ | ---------------------------------------------------------------------------------------------- |
+| Product shape   | Repository still presented itself primarily as a skill.                                                               | User expectation was a full `pi.dev` extension/package.                                          | Repositioned README and package metadata around Pi package + native extension.                 |
+| Pi layout       | Skill lived only at repository root with `pi.skills: ["."]`.                                                          | Works as a manifest path, but is less conventional and easy to confuse with a pure skill upload. | Added `skills/autoresearch/SKILL.md` and changed manifest to `pi.skills: ["./skills"]`.        |
+| Packaging       | `scripts/package-clean.mjs` crashed after `npm pack` because it expected `stdout` while running with inherited stdio. | Release command failed after producing the tarball.                                              | Made packaging script tolerate inherited stdio and return a stable tarball path.               |
+| Metadata        | `private: true` and old `GroepChef` repository URL conflicted with distributable package intent.                      | Package could not be published cleanly and pointed to the wrong GitHub org.                      | Removed private flag and updated repository/homepage/bugs to `OnlineChef`.                     |
+| Discoverability | Keywords were minimal.                                                                                                | Pi package catalog/npm discovery weaker.                                                         | Added `pi-package`, `pi-extension`, `pi-skill`, `agent-skill`, `optimization`, `coding-agent`. |
+| Docs            | README install commands and project description were still skill-oriented.                                            | Users would install or evaluate it as the wrong artifact type.                                   | Rewrote README around extension commands, tools, hooks, runtime files and release flow.        |
+| Validation      | Tests existed but final packaging was not part of a clean release path.                                               | A green test suite could still leave a broken package command.                                   | Re-ran validation and fixed package generation.                                                |
 
 ## Architecture review
 

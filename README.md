@@ -109,12 +109,12 @@ The `/autoresearch dashboard` command shows a standard dashboard with performanc
 
 ## Tools exposed to Pi
 
-| Tool | Purpose |
-| --- | --- |
-| `autoresearch_state` | Read and validate `autoresearch.jsonl`, config, baseline, best result and run history. |
-| `autoresearch_metric` | Parse `METRIC name=value direction=lower|higher` benchmark output and calculate summary/noise data. |
-| `autoresearch_decide` | Decide `baseline`, `keep`, `discard`, or `stop` using metric direction, effect-size threshold, noise floor and correctness result. |
-| `autoresearch_dashboard` | Generate a markdown dashboard from append-only state. |
+| Tool                     | Purpose                                                                                                                            |
+| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
+| `autoresearch_state`     | Read and validate `autoresearch.jsonl`, config, baseline, best result and run history.                                             |
+| `autoresearch_metric`    | Parse `METRIC name=value direction=lower                                                                                           | higher` benchmark output and calculate summary/noise data. |
+| `autoresearch_decide`    | Decide `baseline`, `keep`, `discard`, or `stop` using metric direction, effect-size threshold, noise floor and correctness result. |
+| `autoresearch_dashboard` | Generate a markdown dashboard from append-only state.                                                                              |
 
 ## Runtime files created in target repositories
 
@@ -177,6 +177,7 @@ npm run benchmark
 ```
 
 This measures:
+
 - TypeScript compilation time
 - Test execution time (Python and TypeScript)
 - Code size metrics (TypeScript file count, line count)
@@ -194,6 +195,7 @@ npm run benchmark:comparison
 ```
 
 This evaluates both systems across 15 weighted criteria including:
+
 - Core functionality (experiment loop, state management, confidence scoring, git isolation)
 - Safety features (correctness guards, safety policy, scope validation)
 - User experience (UI integration, commands, documentation)
@@ -201,6 +203,7 @@ This evaluates both systems across 15 weighted criteria including:
 - Performance (throughput, resource efficiency)
 
 The comparison outputs:
+
 - Overall scores for each system
 - Detailed feature-by-feature comparison
 - Feature analysis (advantages and ties)

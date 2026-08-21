@@ -8,9 +8,9 @@ const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const testsDir = join(root, "tests-ts");
 const tsxCli = join(root, "node_modules", "tsx", "dist", "cli.mjs");
 const files = readdirSync(testsDir)
-  .filter(file => file.endsWith(".test.ts"))
+  .filter((file) => file.endsWith(".test.ts"))
   .sort()
-  .map(file => join("tests-ts", file));
+  .map((file) => join("tests-ts", file));
 
 if (files.length === 0) {
   console.error("No TypeScript tests found in tests-ts.");

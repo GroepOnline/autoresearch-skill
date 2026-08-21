@@ -35,10 +35,7 @@ test("package version is 1.2.0", () => {
 
 test("package is not marked private (publishable)", () => {
   // The `private` field must be absent or falsy so `npm publish` is allowed.
-  assert.ok(
-    !pkg["private"],
-    "package.json must not have private:true for a publishable package",
-  );
+  assert.ok(!pkg["private"], "package.json must not have private:true for a publishable package");
 });
 
 // ---------------------------------------------------------------------------
@@ -60,7 +57,10 @@ test("package has author field", () => {
 
 test("package homepage points to OnlineChef organisation", () => {
   const homepage = pkg["homepage"] as string;
-  assert.ok(homepage.includes("OnlineChef"), `Expected homepage to reference OnlineChef, got: ${homepage}`);
+  assert.ok(
+    homepage.includes("OnlineChef"),
+    `Expected homepage to reference OnlineChef, got: ${homepage}`
+  );
 });
 
 test("package bugs URL points to OnlineChef organisation", () => {
@@ -68,7 +68,7 @@ test("package bugs URL points to OnlineChef organisation", () => {
   assert.ok(typeof bugs === "object" && bugs !== null);
   assert.ok(
     bugs.url.includes("OnlineChef"),
-    `Expected bugs.url to reference OnlineChef, got: ${bugs.url}`,
+    `Expected bugs.url to reference OnlineChef, got: ${bugs.url}`
   );
 });
 
@@ -78,7 +78,7 @@ test("package repository URL points to OnlineChef organisation", () => {
   assert.equal(repo.type, "git");
   assert.ok(
     repo.url.includes("OnlineChef"),
-    `Expected repository.url to reference OnlineChef, got: ${repo.url}`,
+    `Expected repository.url to reference OnlineChef, got: ${repo.url}`
   );
 });
 
@@ -86,7 +86,7 @@ test("package repository URL no longer references GroepChef", () => {
   const repo = pkg["repository"] as { url: string };
   assert.ok(
     !repo.url.includes("GroepChef"),
-    `repository.url must not reference old GroepChef org, got: ${repo.url}`,
+    `repository.url must not reference old GroepChef org, got: ${repo.url}`
   );
 });
 
@@ -139,7 +139,10 @@ test("files array retains pre-existing entries", () => {
   // These entries existed before the PR and must not have been removed.
   const retained = ["extensions/", "skills/", "README.md", "LICENSE"];
   for (const entry of retained) {
-    assert.ok(files.includes(entry), `Expected pre-existing file entry "${entry}" to still be present`);
+    assert.ok(
+      files.includes(entry),
+      `Expected pre-existing file entry "${entry}" to still be present`
+    );
   }
 });
 
@@ -157,7 +160,7 @@ test("pi.extensions still points to the native extension entrypoint", () => {
   const pi = pkg["pi"] as { extensions: string[] };
   assert.ok(
     pi.extensions.includes("./extensions/autoresearch/index.ts"),
-    "pi.extensions must include the native extension entrypoint",
+    "pi.extensions must include the native extension entrypoint"
   );
 });
 
@@ -170,7 +173,7 @@ test("scripts.package is defined and points to package-clean.mjs", () => {
   assert.ok(typeof scripts["package"] === "string");
   assert.ok(
     scripts["package"].includes("package-clean.mjs"),
-    `Expected scripts.package to run package-clean.mjs, got: ${scripts["package"]}`,
+    `Expected scripts.package to run package-clean.mjs, got: ${scripts["package"]}`
   );
 });
 
@@ -179,7 +182,7 @@ test("scripts.package and scripts.package:clean point to the same script", () =>
   assert.equal(
     scripts["package"],
     scripts["package:clean"],
-    "Both 'package' and 'package:clean' scripts must resolve to the same command",
+    "Both 'package' and 'package:clean' scripts must resolve to the same command"
   );
 });
 
@@ -200,6 +203,6 @@ test("package requires node >= 18", () => {
   assert.ok(typeof engines === "object" && engines !== null);
   assert.ok(
     engines.node.includes("18"),
-    `Expected engines.node to require >=18, got: ${engines.node}`,
+    `Expected engines.node to require >=18, got: ${engines.node}`
   );
 });

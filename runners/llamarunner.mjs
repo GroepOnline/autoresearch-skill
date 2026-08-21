@@ -10,7 +10,14 @@
  *                        [--max-runs 10] [--max-minutes 60] [--dry-run]
  */
 
-import { readFileSync, writeFileSync, mkdirSync, existsSync, appendFileSync, unlinkSync } from "node:fs";
+import {
+  readFileSync,
+  writeFileSync,
+  mkdirSync,
+  existsSync,
+  appendFileSync,
+  unlinkSync,
+} from "node:fs";
 import { join, resolve } from "node:path";
 import { execSync } from "node:child_process";
 
@@ -20,10 +27,14 @@ const PROVIDER = process.argv.find((_, i, a) => a[i - 1] === "--provider") || "l
 const DRY_RUN = process.argv.includes("--dry-run");
 const DEFAULT_PORT = PROVIDER === "ollama" ? 11434 : 8081;
 const LLAMA_HOST = process.env.LLAMA_HOST || `http://localhost:${DEFAULT_PORT}`;
-const MODEL = process.argv.find((_, i, a) => a[i - 1] === "--model") || (PROVIDER === "ollama" ? "qwen3:4b-nothink" : "Qwen3-4B-Q4_K_M.gguf");
+const MODEL =
+  process.argv.find((_, i, a) => a[i - 1] === "--model") ||
+  (PROVIDER === "ollama" ? "qwen3:4b-nothink" : "Qwen3-4B-Q4_K_M.gguf");
 const MAX_RUNS = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--max-runs") || "10");
 const MAX_MINUTES = parseInt(process.argv.find((_, i, a) => a[i - 1] === "--max-minutes") || "60");
-const TARGET_DIR = process.argv.find((_, i, a) => a[i - 1] === "--target") || resolve(process.cwd(), "../skill-grinder");
+const TARGET_DIR =
+  process.argv.find((_, i, a) => a[i - 1] === "--target") ||
+  resolve(process.cwd(), "../skill-grinder");
 const SKILL_FILTER = process.argv.find((_, i, a) => a[i - 1] === "--skill") || null; // comma-separated skill names
 const STATE_DIR = join(TARGET_DIR, ".autoresearch");
 const JSONL_PATH = join(STATE_DIR, "autoresearch.jsonl");
@@ -106,7 +117,10 @@ function loadState() {
           keptCount++;
           consecutiveDiscards = 0;
           runsSinceLastImprovement = 0;
-          if (bestMetric === null || (config?.direction === "higher" ? entry.value > bestMetric : entry.value < bestMetric)) {
+          if (
+            bestMetric === null ||
+            (config?.direction === "higher" ? entry.value > bestMetric : entry.value < bestMetric)
+          ) {
             bestMetric = entry.value;
             bestRun = entry.run;
           }
@@ -167,10 +181,15 @@ async function llamaChat(messages, { maxTokens = 1024, temperature = 0.7 } = {})
       const msg = data.choices[0]?.message;
       return msg?.content || msg?.reasoning_content || "";
     } catch (e) {
-      const isRetryable = e.name === "AbortError" || e.message.includes("fetch failed") || e.message.includes("ECONNREFUSED");
+      const isRetryable =
+        e.name === "AbortError" ||
+        e.message.includes("fetch failed") ||
+        e.message.includes("ECONNREFUSED");
       if (attempt < MAX_ATTEMPTS && isRetryable) {
         const backoffMs = 1000 * Math.pow(2, attempt - 1);
-        console.log(`  Attempt ${attempt}/${MAX_ATTEMPTS} failed (${e.message}), retrying in ${backoffMs}ms...`);
+        console.log(
+          `  Attempt ${attempt}/${MAX_ATTEMPTS} failed (${e.message}), retrying in ${backoffMs}ms...`
+        );
         await new Promise((r) => setTimeout(r, backoffMs));
         continue;
       }
@@ -183,28 +202,35 @@ async function llamaChat(messages, { maxTokens = 1024, temperature = 0.7 } = {})
 
 async function llmGetFixes(skillContent, issues) {
   const MAX_SKILL_CHARS = 2000;
-  const truncated = skillContent.length > MAX_SKILL_CHARS
-    ? skillContent.slice(0, MAX_SKILL_CHARS) + "\n\n[... truncated ...]"
-    : skillContent;
+  const truncated =
+    skillContent.length > MAX_SKILL_CHARS
+      ? skillContent.slice(0, MAX_SKILL_CHARS) + "\n\n[... truncated ...]"
+      : skillContent;
 
   const maxTokens = PROVIDER === "ollama" ? 256 : 1024;
 
-  return llamaChat([
-    {
-      role: "system",
-      content: `You are a SKILL.md editor. Output ONLY the sections to ADD to the file, not the full file. Keep it minimal. Format: exactly the markdown content to append, nothing else. /no_think`,
-    },
-    {
-      role: "user",
-      content: `Current SKILL.md:\n\n${truncated}\n\nMissing sections:\n${issues}\n\nOutput ONLY the missing sections to append:`,
-    },
-  ], { maxTokens });
+  return llamaChat(
+    [
+      {
+        role: "system",
+        content: `You are a SKILL.md editor. Output ONLY the sections to ADD to the file, not the full file. Keep it minimal. Format: exactly the markdown content to append, nothing else. /no_think`,
+      },
+      {
+        role: "user",
+        content: `Current SKILL.md:\n\n${truncated}\n\nMissing sections:\n${issues}\n\nOutput ONLY the missing sections to append:`,
+      },
+    ],
+    { maxTokens }
+  );
 }
 
 function applyFixes(originalContent, fixes) {
   if (!fixes || fixes.length < 20) return null;
   // Strip markdown code fences if present
-  const cleaned = fixes.replace(/^```[\w]*\n?/gm, "").replace(/```$/gm, "").trim();
+  const cleaned = fixes
+    .replace(/^```[\w]*\n?/gm, "")
+    .replace(/```$/gm, "")
+    .trim();
   if (!cleaned) return null;
   return originalContent.trimEnd() + "\n\n" + cleaned + "\n";
 }
@@ -280,10 +306,10 @@ function runBenchmark(targetFile) {
          console.log('METRIC skill_quality=' + avg.toFixed(1) + ' direction=higher');`;
 
     writeFileSync(tmpScript, measureScript);
-    const result = execSync(
-      `cd "${TARGET_DIR}" && node "${tmpScript}"`,
-      { encoding: "utf-8", timeout: 30000 }
-    );
+    const result = execSync(`cd "${TARGET_DIR}" && node "${tmpScript}"`, {
+      encoding: "utf-8",
+      timeout: 30000,
+    });
 
     const metricMatch = result.match(/METRIC\s+skill_quality=([\d.]+)\s+direction=(\w+)/);
     if (metricMatch) {
@@ -298,7 +324,9 @@ function runBenchmark(targetFile) {
     console.error("Benchmark error:", e.message);
     return null;
   } finally {
-    try { unlinkSync(tmpScript); } catch {}
+    try {
+      unlinkSync(tmpScript);
+    } catch {}
   }
 }
 
@@ -313,8 +341,7 @@ function decideMetric(result) {
 
   const delta = result.value - baselineMetric;
   const deltaPct = (delta / Math.abs(baselineMetric)) * 100;
-  const isImprovement =
-    config.direction === "higher" ? delta > 0 : delta < 0;
+  const isImprovement = config.direction === "higher" ? delta > 0 : delta < 0;
   const aboveNoise = Math.abs(deltaPct) >= (config.noise_floor_pct || 5);
   const aboveEffect = Math.abs(deltaPct) >= (config.min_effect_size_pct || 2);
 
@@ -337,9 +364,13 @@ function getSkillFiles() {
     );
     let files = result.trim().split("\n").filter(Boolean);
     if (SKILL_FILTER) {
-      const names = SKILL_FILTER.split(",").map(s => s.trim().toLowerCase());
-      files = files.filter(f => {
-        const dir = f.replace(/\/SKILL\.md$/, "").split("/").pop().toLowerCase();
+      const names = SKILL_FILTER.split(",").map((s) => s.trim().toLowerCase());
+      files = files.filter((f) => {
+        const dir = f
+          .replace(/\/SKILL\.md$/, "")
+          .split("/")
+          .pop()
+          .toLowerCase();
         return names.includes(dir);
       });
     }
@@ -377,7 +408,9 @@ function analyzeSkill(filePath) {
 async function main() {
   const providerLabel = PROVIDER === "ollama" ? "Ollama" : "llama.cpp";
   console.log("╔══════════════════════════════════════════════════════════╗");
-  console.log(`║   Autoresearch Runner (${providerLabel})${DRY_RUN ? " [DRY RUN]" : ""}`.padEnd(59) + "║");
+  console.log(
+    `║   Autoresearch Runner (${providerLabel})${DRY_RUN ? " [DRY RUN]" : ""}`.padEnd(59) + "║"
+  );
   console.log("╠══════════════════════════════════════════════════════════╣");
   console.log(`║  Model:     ${MODEL.padEnd(43)}║`);
   console.log(`║  Provider:  ${providerLabel.padEnd(43)}║`);
@@ -415,12 +448,22 @@ async function main() {
   // Write PID file so Stop hook can detect active runs
   const PID_FILE = join(STATE_DIR, "runner.pid");
   writeFileSync(PID_FILE, String(process.pid));
-  process.on("exit", () => { try { unlinkSync(PID_FILE); } catch {} });
+  process.on("exit", () => {
+    try {
+      unlinkSync(PID_FILE);
+    } catch {}
+  });
 
   // Test LLM connection
   console.log("\nTesting LLM connection...");
   try {
-    const testResp = await llamaChat([{ role: "system", content: "Respond in one word. /no_think" }, { role: "user", content: "Say hello." }], { maxTokens: 20 });
+    const testResp = await llamaChat(
+      [
+        { role: "system", content: "Respond in one word. /no_think" },
+        { role: "user", content: "Say hello." },
+      ],
+      { maxTokens: 20 }
+    );
     console.log("LLM response:", testResp.slice(0, 50));
   } catch (e) {
     console.error("LLM connection failed:", e.message);
@@ -448,9 +491,19 @@ async function main() {
       console.log(`Baseline: ${baseline.value}`);
 
       const decision = decideMetric(result);
-      decisions.push({ run: runCount, action: "baseline", reason: decision.reason, timestamp: new Date().toISOString() });
+      decisions.push({
+        run: runCount,
+        action: "baseline",
+        reason: decision.reason,
+        timestamp: new Date().toISOString(),
+      });
       if (!DRY_RUN) {
-        appendJsonl({ type: "decision", run: runCount, action: "baseline", reason: decision.reason });
+        appendJsonl({
+          type: "decision",
+          run: runCount,
+          action: "baseline",
+          reason: decision.reason,
+        });
       }
     }
   }
@@ -474,7 +527,9 @@ async function main() {
       break;
     }
 
-    console.log(`\n─── Run ${runCount + 1}/${MAX_RUNS} (${elapsedMinutes.toFixed(1)} min elapsed) ───`);
+    console.log(
+      `\n─── Run ${runCount + 1}/${MAX_RUNS} (${elapsedMinutes.toFixed(1)} min elapsed) ───`
+    );
 
     // Find a skill to improve
     const skillFiles = getSkillFiles();
@@ -484,12 +539,16 @@ async function main() {
     }
 
     // Score all skills and pick low-scoring ones preferentially
-    const scoredSkills = skillFiles.map(f => {
-      try {
-        const m = runBenchmark(f);
-        return { file: f, score: m?.value ?? 0 };
-      } catch { return { file: f, score: 100 }; }
-    }).filter(s => s.score < 90); // Only target skills below 90
+    const scoredSkills = skillFiles
+      .map((f) => {
+        try {
+          const m = runBenchmark(f);
+          return { file: f, score: m?.value ?? 0 };
+        } catch {
+          return { file: f, score: 100 };
+        }
+      })
+      .filter((s) => s.score < 90); // Only target skills below 90
 
     let targetFile;
     if (scoredSkills.length > 0) {
@@ -500,10 +559,15 @@ async function main() {
       let r = Math.random() * totalWeight;
       for (let i = 0; i < scoredSkills.length; i++) {
         r -= weights[i];
-        if (r <= 0) { targetFile = scoredSkills[i].file; break; }
+        if (r <= 0) {
+          targetFile = scoredSkills[i].file;
+          break;
+        }
       }
       targetFile = targetFile || scoredSkills[0].file;
-      console.log(`Smart pick: ${targetFile.split("/").slice(-2, -1)[0]} (score: ${scoredSkills.find(s => s.file === targetFile)?.score})`);
+      console.log(
+        `Smart pick: ${targetFile.split("/").slice(-2, -1)[0]} (score: ${scoredSkills.find((s) => s.file === targetFile)?.score})`
+      );
     } else {
       console.log("All skills above 90 — nothing to improve");
       break;
@@ -537,7 +601,9 @@ async function main() {
       // Apply improvement
       const backup = analysis.content;
       if (DRY_RUN) {
-        console.log(`[DRY RUN] Would write improvement to ${targetFile} (${improved.length} chars)`);
+        console.log(
+          `[DRY RUN] Would write improvement to ${targetFile} (${improved.length} chars)`
+        );
       } else {
         writeFileSync(targetFile, improved);
       }
@@ -560,15 +626,21 @@ async function main() {
 
       // Decide based on per-skill before/after comparison
       const delta = afterScore - beforeScore;
-      const deltaPct = beforeScore > 0 ? (delta / beforeScore) * 100 : (afterScore > 0 ? 100 : 0);
+      const deltaPct = beforeScore > 0 ? (delta / beforeScore) * 100 : afterScore > 0 ? 100 : 0;
       const aboveNoise = Math.abs(deltaPct) >= (config?.noise_floor_pct || 5);
       const isImprovement = delta > 0;
 
       let decision;
       if (isImprovement && aboveNoise) {
-        decision = { action: "keep", reason: `improved by ${deltaPct.toFixed(1)}% (${beforeScore} → ${afterScore})` };
+        decision = {
+          action: "keep",
+          reason: `improved by ${deltaPct.toFixed(1)}% (${beforeScore} → ${afterScore})`,
+        };
       } else if (isImprovement) {
-        decision = { action: "discard", reason: `improvement ${deltaPct.toFixed(1)}% below noise floor` };
+        decision = {
+          action: "discard",
+          reason: `improvement ${deltaPct.toFixed(1)}% below noise floor`,
+        };
       } else {
         decision = { action: "discard", reason: `no improvement (${deltaPct.toFixed(1)}%)` };
       }
@@ -616,9 +688,19 @@ async function main() {
       if (!DRY_RUN) {
         appendJsonl(result);
       }
-      decisions.push({ run: runCount, action: decision.action, reason: decision.reason, timestamp: new Date().toISOString() });
+      decisions.push({
+        run: runCount,
+        action: decision.action,
+        reason: decision.reason,
+        timestamp: new Date().toISOString(),
+      });
       if (!DRY_RUN) {
-        appendJsonl({ type: "decision", run: runCount, action: decision.action, reason: decision.reason });
+        appendJsonl({
+          type: "decision",
+          run: runCount,
+          action: decision.action,
+          reason: decision.reason,
+        });
       }
     } catch (e) {
       console.error("Run error:", e.message);
@@ -634,8 +716,12 @@ async function main() {
   console.log(`║  Kept:       ${String(keptCount).padEnd(42)}║`);
   console.log(`║  Discarded:  ${String(discardedCount).padEnd(42)}║`);
   console.log(`║  Crashed:    ${String(crashedCount).padEnd(42)}║`);
-  console.log(`║  Best:       ${bestMetric !== null ? String(bestMetric).padEnd(42) : "N/A".padEnd(42)}║`);
-  console.log(`║  Best Run:   ${bestRun !== null ? String(bestRun).padEnd(42) : "N/A".padEnd(42)}║`);
+  console.log(
+    `║  Best:       ${bestMetric !== null ? String(bestMetric).padEnd(42) : "N/A".padEnd(42)}║`
+  );
+  console.log(
+    `║  Best Run:   ${bestRun !== null ? String(bestRun).padEnd(42) : "N/A".padEnd(42)}║`
+  );
   console.log("╚══════════════════════════════════════════════════════════╝");
 
   // Save dashboard

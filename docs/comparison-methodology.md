@@ -100,17 +100,19 @@ The comparison is based on 15 weighted criteria across 4 categories:
 Each criterion is scored on a scale of 0-1:
 
 - **Binary features**: 1.0 if present, 0.0 if absent
-- **Performance metrics**: 
+- **Performance metrics**:
   - "high" = 1.0
   - "medium" = 0.7
   - "low" = 0.4
 
 The weighted score is calculated as:
+
 ```
 weighted_score = feature_score × criterion_weight
 ```
 
 The overall score is the sum of all weighted scores divided by the maximum possible score:
+
 ```
 overall_score = (sum of weighted scores) / (sum of weights)
 overall_percentage = overall_score × 100
@@ -145,6 +147,7 @@ npm run benchmark:comparison
 ```
 
 This will output:
+
 - Overall scores for each system
 - Detailed comparison table
 - Feature analysis (advantages and ties)
@@ -160,12 +163,14 @@ The overall score (0-100%) indicates how well each system meets the evaluation c
 ### Feature Analysis
 
 The feature analysis identifies:
+
 - **Advantages**: Areas where one system outperforms the other
 - **Ties**: Areas where both systems perform equally
 
 ### Recommendations
 
 The recommendations section provides guidance on when to choose each system based on:
+
 - Platform compatibility
 - Technical preferences
 - Specific feature requirements

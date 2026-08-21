@@ -16,12 +16,12 @@ This repository contains the **Autoresearch Skill** — a bounded, benchmark-dri
 
 ## Build, Test, and Development Commands
 
-| Command | Purpose |
-|---------|---------|
-| `npm run typecheck` | TypeScript type checking (`tsc --noEmit`) |
-| `npm test` | Run Python unit tests through the cross-platform Node wrapper |
-| `npm run test:ts` | Run TypeScript tests through the cross-platform Node wrapper |
-| `npm run validate` | Run Python tests, TypeScript tests, and `tsc --noEmit` |
+| Command             | Purpose                                                       |
+| ------------------- | ------------------------------------------------------------- |
+| `npm run typecheck` | TypeScript type checking (`tsc --noEmit`)                     |
+| `npm test`          | Run Python unit tests through the cross-platform Node wrapper |
+| `npm run test:ts`   | Run TypeScript tests through the cross-platform Node wrapper  |
+| `npm run validate`  | Run Python tests, TypeScript tests, and `tsc --noEmit`        |
 
 ## Coding Style & Naming Conventions
 

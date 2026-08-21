@@ -12,7 +12,7 @@
  *   ln -s ~/projects/autoresearch-skill/extension.ts ~/.pi/agent/extensions/autoresearch.ts
  */
 
-import type { ExtensionAPI, ExtensionContext } from "@mariozechner/pi-coding-agent";
+import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 
@@ -57,22 +57,29 @@ interface ArState {
 
 function paths(cwd: string) {
   return {
-    jsonl:     path.join(cwd, "autoresearch.jsonl"),
-    context:   path.join(cwd, "autoresearch.md"),
-    sentinel:  path.join(cwd, ".autoresearch-off"),
+    jsonl: path.join(cwd, "autoresearch.jsonl"),
+    context: path.join(cwd, "autoresearch.md"),
+    sentinel: path.join(cwd, ".autoresearch-off"),
     dashboard: path.join(cwd, "autoresearch-dashboard.md"),
-    worklog:   path.join(cwd, "experiments", "worklog.md"),
-    ideas:     path.join(cwd, "autoresearch.ideas.md"),
+    worklog: path.join(cwd, "experiments", "worklog.md"),
+    ideas: path.join(cwd, "autoresearch.ideas.md"),
   };
 }
 
 function readState(cwd: string): ArState {
   const p = paths(cwd);
   const blank: ArState = {
-    config: null, results: [], runCount: 0,
-    keptCount: 0, discardedCount: 0, crashedCount: 0,
-    bestMetric: null, bestRun: null, baselineMetric: null,
-    currentSegment: 0, isPaused: fs.existsSync(p.sentinel),
+    config: null,
+    results: [],
+    runCount: 0,
+    keptCount: 0,
+    discardedCount: 0,
+    crashedCount: 0,
+    bestMetric: null,
+    bestRun: null,
+    baselineMetric: null,
+    currentSegment: 0,
+    isPaused: fs.existsSync(p.sentinel),
     hasIdeas: fs.existsSync(p.ideas),
   };
 
@@ -102,12 +109,14 @@ function readState(cwd: string): ArState {
           baselineSet = true;
         }
       }
-    } catch { /* skip malformed */ }
+    } catch {
+      /* skip malformed */
+    }
   }
 
-  const kept      = results.filter(r => r.status === "keep");
-  const discarded = results.filter(r => r.status === "discard");
-  const crashed   = results.filter(r => r.status === "crash");
+  const kept = results.filter((r) => r.status === "keep");
+  const discarded = results.filter((r) => r.status === "discard");
+  const crashed = results.filter((r) => r.status === "crash");
 
   // Best metric from kept results
   let bestMetric: number | null = null;
@@ -154,7 +163,13 @@ function footerText(state: ArState): string {
   if (!state.config) return "";
   const { config, runCount, bestMetric, bestRun, baselineMetric, isPaused } = state;
   const last = state.results.at(-1);
-  const icon = isPaused ? "⏸" : last?.status === "keep" ? "✅" : last?.status === "crash" ? "💥" : "🔬";
+  const icon = isPaused
+    ? "⏸"
+    : last?.status === "keep"
+      ? "✅"
+      : last?.status === "crash"
+        ? "💥"
+        : "🔬";
   let s = `${icon} AR:${config.name} | runs:${runCount}`;
   if (bestMetric !== null && baselineMetric !== null) {
     s += ` | best:${fmt(bestMetric, config.metricUnit)} ${delta(bestMetric, baselineMetric)}`;
@@ -170,7 +185,16 @@ function buildContextInjection(cwd: string, state: ArState): string | null {
   let md = fs.readFileSync(p.context, "utf-8");
 
   if (state.config && state.runCount > 0) {
-    const { config, runCount, keptCount, discardedCount, crashedCount, bestMetric, bestRun, baselineMetric } = state;
+    const {
+      config,
+      runCount,
+      keptCount,
+      discardedCount,
+      crashedCount,
+      bestMetric,
+      bestRun,
+      baselineMetric,
+    } = state;
     const last = state.results.at(-1);
     md += `\n\n---\n## Autoresearch Loop — Live State\n`;
     md += `- Run: **${runCount}** | ✅ ${keptCount} | ❌ ${discardedCount} | 💥 ${crashedCount}\n`;
@@ -178,8 +202,7 @@ function buildContextInjection(cwd: string, state: ArState): string | null {
       md += `- Baseline ${config.metricName}: ${fmt(baselineMetric, config.metricUnit)}\n`;
     if (bestMetric !== null && bestRun !== null)
       md += `- Best ${config.metricName}: ${fmt(bestMetric, config.metricUnit)} (#${bestRun}) ${delta(bestMetric, baselineMetric ?? 0)}\n`;
-    if (last)
-      md += `- Last run #${last.run}: ${last.status} — ${last.description}\n`;
+    if (last) md += `- Last run #${last.run}: ${last.status} — ${last.description}\n`;
     md += `\n**LOOP FOREVER. Primary metric is king. NEVER STOP.**\n`;
   }
 
@@ -189,16 +212,16 @@ function buildContextInjection(cwd: string, state: ArState): string | null {
 // ─── Extension ───────────────────────────────────────────────────────────────
 
 export default function autoresearchExtension(pi: ExtensionAPI) {
-
   // ── Session start: herstel footer ──────────────────────────────────────────
   pi.on("session_start", async (_event, ctx) => {
     const state = readState(ctx.cwd);
     ctx.ui.setStatus("autoresearch", footerText(state));
 
     if (state.hasIdeas) {
-      void fs.promises.readFile(paths(ctx.cwd).ideas, "utf-8")
+      void fs.promises
+        .readFile(paths(ctx.cwd).ideas, "utf-8")
         .then((raw) => {
-          const count = raw.split("\n").filter(l => l.startsWith("- ")).length;
+          const count = raw.split("\n").filter((l) => l.startsWith("- ")).length;
           if (count > 0) {
             ctx.ui.notify(`💡 autoresearch.ideas.md heeft ${count} ideeën`, "info");
           }
@@ -246,7 +269,9 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       `Name: ${state.config.name}`,
       `Metric: ${state.config.metricName} (${state.config.bestDirection})`,
       `Runs: ${state.runCount} | Kept: ${state.keptCount} | Discarded: ${state.discardedCount} | Crashed: ${state.crashedCount}`,
-      state.baselineMetric !== null ? `Baseline: ${fmt(state.baselineMetric, state.config.metricUnit)}` : "",
+      state.baselineMetric !== null
+        ? `Baseline: ${fmt(state.baselineMetric, state.config.metricUnit)}`
+        : "",
       state.bestMetric !== null && state.bestRun !== null
         ? `Best: ${fmt(state.bestMetric, state.config.metricUnit)} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
         : "",
@@ -254,7 +279,9 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       `State files: autoresearch.jsonl, autoresearch.md, experiments/worklog.md`,
       `Loop rule: LOOP FOREVER. Primary metric is king. NEVER STOP.`,
       `Resume: read autoresearch.jsonl + worklog.md, continue from run ${state.runCount + 1}`,
-    ].filter(Boolean).join("\n");
+    ]
+      .filter(Boolean)
+      .join("\n");
 
     // We injecteren het als extra context in de compaction — NIET blokkeren
     // custom-compaction.ts doet de echte samenvatting, wij voegen AR state toe
@@ -275,13 +302,12 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
 
   // ── /autoresearch command ──────────────────────────────────────────────────
   pi.registerCommand("autoresearch", {
-    description: "Autoresearch loop control: status | pause | resume | dashboard | new <goal> | start",
+    description:
+      "Autoresearch loop control: status | pause | resume | dashboard | new <goal> | start",
 
     getArgumentCompletions: (prefix: string) => {
       const subs = ["status", "pause", "resume", "dashboard", "new", "start"];
-      return subs
-        .filter(s => s.startsWith(prefix))
-        .map(s => ({ value: s, label: s }));
+      return subs.filter((s) => s.startsWith(prefix)).map((s) => ({ value: s, label: s }));
     },
 
     handler: async (args: string, ctx) => {
@@ -289,30 +315,47 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       const p = paths(ctx.cwd);
 
       switch (sub) {
-
         // ── status ──────────────────────────────────────────────────────────
         case "status":
         case "": {
           const state = readState(ctx.cwd);
           if (!state.config) {
-            ctx.ui.notify("Geen actieve autoresearch sessie.\n\nStart met: /autoresearch new <doel>", "info");
+            ctx.ui.notify(
+              "Geen actieve autoresearch sessie.\n\nStart met: /autoresearch new <doel>",
+              "info"
+            );
             return;
           }
-          const { config, runCount, keptCount, discardedCount, crashedCount, bestMetric, bestRun, baselineMetric, isPaused } = state;
+          const {
+            config,
+            runCount,
+            keptCount,
+            discardedCount,
+            crashedCount,
+            bestMetric,
+            bestRun,
+            baselineMetric,
+            isPaused,
+          } = state;
           const last = state.results.at(-1);
-          ctx.ui.notify([
-            `🔬 Autoresearch: ${config.name}`,
-            `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
-            `Metric: ${config.metricName} (${config.bestDirection} = beter)`,
-            `Runs: ${runCount} | ✅ ${keptCount} | ❌ ${discardedCount} | 💥 ${crashedCount}`,
-            baselineMetric !== null ? `Baseline: ${fmt(baselineMetric, config.metricUnit)}` : "",
-            bestMetric !== null && bestRun !== null
-              ? `Best: ${fmt(bestMetric, config.metricUnit)} (#${bestRun}) ${delta(bestMetric, baselineMetric ?? 0)}`
-              : "Best: geen resultaten nog",
-            last ? `Laatste: run #${last.run} → ${last.status} — ${last.description}` : "",
-            isPaused ? "⏸️  GEPAUZEERD — gebruik /autoresearch resume" : "▶️  ACTIEF",
-            state.hasIdeas ? "💡 autoresearch.ideas.md aanwezig" : "",
-          ].filter(Boolean).join("\n"), "info");
+          ctx.ui.notify(
+            [
+              `🔬 Autoresearch: ${config.name}`,
+              `━━━━━━━━━━━━━━━━━━━━━━━━━━━━`,
+              `Metric: ${config.metricName} (${config.bestDirection} = beter)`,
+              `Runs: ${runCount} | ✅ ${keptCount} | ❌ ${discardedCount} | 💥 ${crashedCount}`,
+              baselineMetric !== null ? `Baseline: ${fmt(baselineMetric, config.metricUnit)}` : "",
+              bestMetric !== null && bestRun !== null
+                ? `Best: ${fmt(bestMetric, config.metricUnit)} (#${bestRun}) ${delta(bestMetric, baselineMetric ?? 0)}`
+                : "Best: geen resultaten nog",
+              last ? `Laatste: run #${last.run} → ${last.status} — ${last.description}` : "",
+              isPaused ? "⏸️  GEPAUZEERD — gebruik /autoresearch resume" : "▶️  ACTIEF",
+              state.hasIdeas ? "💡 autoresearch.ideas.md aanwezig" : "",
+            ]
+              .filter(Boolean)
+              .join("\n"),
+            "info"
+          );
           return;
         }
 
@@ -321,7 +364,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
           fs.writeFileSync(p.sentinel, `paused: ${new Date().toISOString()}\n`);
           const state = readState(ctx.cwd);
           ctx.ui.setStatus("autoresearch", footerText(state));
-          ctx.ui.notify("⏸️  Autoresearch loop gepauzeerd.\nGebruik /autoresearch resume om door te gaan.", "info");
+          ctx.ui.notify(
+            "⏸️  Autoresearch loop gepauzeerd.\nGebruik /autoresearch resume om door te gaan.",
+            "info"
+          );
           return;
         }
 
@@ -341,14 +387,26 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
             ctx.ui.notify("Geen actieve sessie.", "warning");
             return;
           }
-          const { config, results, runCount, keptCount, discardedCount, crashedCount, baselineMetric } = state;
+          const {
+            config,
+            results,
+            runCount,
+            keptCount,
+            discardedCount,
+            crashedCount,
+            baselineMetric,
+          } = state;
 
           // Toon dashboard als widget boven editor
-          const rows = [`🔬 ${config.name} | ${runCount} runs | ✅${keptCount} ❌${discardedCount} 💥${crashedCount}`];
+          const rows = [
+            `🔬 ${config.name} | ${runCount} runs | ✅${keptCount} ❌${discardedCount} 💥${crashedCount}`,
+          ];
           if (baselineMetric !== null)
             rows.push(`Baseline: ${fmt(baselineMetric, config.metricUnit)}`);
           if (state.bestMetric !== null && state.bestRun !== null)
-            rows.push(`Best: ${fmt(state.bestMetric, config.metricUnit)} (#${state.bestRun}) ${delta(state.bestMetric, baselineMetric ?? 0)}`);
+            rows.push(
+              `Best: ${fmt(state.bestMetric, config.metricUnit)} (#${state.bestRun}) ${delta(state.bestMetric, baselineMetric ?? 0)}`
+            );
           rows.push("─".repeat(60));
           rows.push(`# │ ${config.metricName.padEnd(12)} │ status   │ beschrijving`);
           rows.push("─".repeat(60));
@@ -370,12 +428,18 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         case "new": {
           const doel = rest.join(" ").trim();
           if (!doel) {
-            ctx.ui.notify("Gebruik: /autoresearch new <doel>\nBijv: /autoresearch new optimize-lexer-performance", "warning");
+            ctx.ui.notify(
+              "Gebruik: /autoresearch new <doel>\nBijv: /autoresearch new optimize-lexer-performance",
+              "warning"
+            );
             return;
           }
 
           if (fs.existsSync(p.context)) {
-            const ok = await ctx.ui.confirm("Overschrijven?", `autoresearch.md bestaat al. Overschrijven voor nieuw doel: "${doel}"?`);
+            const ok = await ctx.ui.confirm(
+              "Overschrijven?",
+              `autoresearch.md bestaat al. Overschrijven voor nieuw doel: "${doel}"?`
+            );
             if (!ok) return;
           }
 
@@ -383,71 +447,84 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
           fs.mkdirSync(path.join(ctx.cwd, "experiments"), { recursive: true });
 
           // Scaffold autoresearch.md
-          fs.writeFileSync(p.context, [
-            `# Autoresearch: ${doel}`,
-            ``,
-            `## Objective`,
-            `${doel}`,
-            ``,
-            `## Metrics`,
-            `- **Primary**: <metric_name> (<unit>, lower/higher is better)`,
-            `- **Secondary**: (optioneel)`,
-            ``,
-            `## How to Run`,
-            `\`./autoresearch.sh\` — outputs \`METRIC name=number\` regels.`,
-            ``,
-            `## Files in Scope`,
-            `<Elk bestand dat de agent mag wijzigen>`,
-            ``,
-            `## Off Limits`,
-            `<Wat NIET aangeraakt mag worden>`,
-            ``,
-            `## Constraints`,
-            `<Harde regels: tests must pass, no new deps, etc.>`,
-            ``,
-            `## What's Been Tried`,
-            `- (nog niets — dit is de baseline)`,
-          ].join("\n"));
+          fs.writeFileSync(
+            p.context,
+            [
+              `# Autoresearch: ${doel}`,
+              ``,
+              `## Objective`,
+              `${doel}`,
+              ``,
+              `## Metrics`,
+              `- **Primary**: <metric_name> (<unit>, lower/higher is better)`,
+              `- **Secondary**: (optioneel)`,
+              ``,
+              `## How to Run`,
+              `\`./autoresearch.sh\` — outputs \`METRIC name=number\` regels.`,
+              ``,
+              `## Files in Scope`,
+              `<Elk bestand dat de agent mag wijzigen>`,
+              ``,
+              `## Off Limits`,
+              `<Wat NIET aangeraakt mag worden>`,
+              ``,
+              `## Constraints`,
+              `<Harde regels: tests must pass, no new deps, etc.>`,
+              ``,
+              `## What's Been Tried`,
+              `- (nog niets — dit is de baseline)`,
+            ].join("\n")
+          );
 
           // Scaffold autoresearch.sh
           if (!fs.existsSync(path.join(ctx.cwd, "autoresearch.sh"))) {
-            fs.writeFileSync(path.join(ctx.cwd, "autoresearch.sh"), [
-              `#!/usr/bin/env bash`,
-              `set -euo pipefail`,
-              ``,
-              `# Run benchmark and output METRIC lines`,
-              `# Example:`,
-              `# time_ms=$(...)`,
-              `# echo "METRIC latency_ms=$time_ms"`,
-              ``,
-              `echo "METRIC <name>=<value>"`,
-            ].join("\n"), { mode: 0o755 });
+            fs.writeFileSync(
+              path.join(ctx.cwd, "autoresearch.sh"),
+              [
+                `#!/usr/bin/env bash`,
+                `set -euo pipefail`,
+                ``,
+                `# Run benchmark and output METRIC lines`,
+                `# Example:`,
+                `# time_ms=$(...)`,
+                `# echo "METRIC latency_ms=$time_ms"`,
+                ``,
+                `echo "METRIC <name>=<value>"`,
+              ].join("\n"),
+              { mode: 0o755 }
+            );
           }
 
           // Maak worklog
           if (!fs.existsSync(p.worklog)) {
-            fs.writeFileSync(p.worklog, [
-              `# Autoresearch Worklog: ${doel}`,
-              `Started: ${new Date().toISOString().slice(0, 16)}`,
-              ``,
-              `## Key Insights`,
-              `- (worden hier bijgehouden naarmate experiments vorderen)`,
-              ``,
-              `## Next Ideas`,
-              `- (toevoegen naarmate ideeën opkomen)`,
-              ``,
-              `---`,
-            ].join("\n"));
+            fs.writeFileSync(
+              p.worklog,
+              [
+                `# Autoresearch Worklog: ${doel}`,
+                `Started: ${new Date().toISOString().slice(0, 16)}`,
+                ``,
+                `## Key Insights`,
+                `- (worden hier bijgehouden naarmate experiments vorderen)`,
+                ``,
+                `## Next Ideas`,
+                `- (toevoegen naarmate ideeën opkomen)`,
+                ``,
+                `---`,
+              ].join("\n")
+            );
           }
 
-          ctx.ui.notify([
-            `✅ Autoresearch sessie '${doel}' aangemaakt!`,
-            ``,
-            `Volgende stappen:`,
-            `1. Edit autoresearch.md — vul metrics, files, constraints in`,
-            `2. Edit autoresearch.sh — implementeer de benchmark`,
-            `3. /autoresearch start — begin de loop`,
-          ].join("\n"), "info");
+          ctx.ui.notify(
+            [
+              `✅ Autoresearch sessie '${doel}' aangemaakt!`,
+              ``,
+              `Volgende stappen:`,
+              `1. Edit autoresearch.md — vul metrics, files, constraints in`,
+              `2. Edit autoresearch.sh — implementeer de benchmark`,
+              `3. /autoresearch start — begin de loop`,
+            ].join("\n"),
+            "info"
+          );
 
           const state = readState(ctx.cwd);
           ctx.ui.setStatus("autoresearch", footerText(state));
@@ -458,7 +535,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         case "start": {
           const p2 = paths(ctx.cwd);
           if (!fs.existsSync(p2.context)) {
-            ctx.ui.notify("autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.", "error");
+            ctx.ui.notify(
+              "autoresearch.md niet gevonden. Gebruik eerst /autoresearch new <doel>.",
+              "error"
+            );
             return;
           }
           if (!fs.existsSync(path.join(ctx.cwd, "autoresearch.sh"))) {
@@ -470,7 +550,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
             return;
           }
 
-          ctx.ui.notify("🚀 Autoresearch loop gestart! Agent begint experiments te runnen...", "info");
+          ctx.ui.notify(
+            "🚀 Autoresearch loop gestart! Agent begint experiments te runnen...",
+            "info"
+          );
 
           // Stuur de agent de loop instructie als follow-up
           pi.sendUserMessage(

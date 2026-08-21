@@ -22,7 +22,7 @@ import test from "node:test";
 function run(
   command: string,
   args: string[],
-  options: { cwd?: string; stdio?: "pipe" | "inherit" | "ignore" } = {},
+  options: { cwd?: string; stdio?: "pipe" | "inherit" | "ignore" } = {}
 ): string {
   const result = spawnSync(command, args, {
     cwd: options.cwd,
@@ -65,14 +65,14 @@ test("run() trims trailing newline from captured stdout", () => {
 test("run() throws when the command exits with non-zero status", () => {
   assert.throws(
     () => run("node", ["--eval", "process.exit(1)"]),
-    (err: unknown) => err instanceof Error,
+    (err: unknown) => err instanceof Error
   );
 });
 
 test("run() re-throws spawnSync errors (e.g. command not found)", () => {
   assert.throws(
     () => run("__definitely_does_not_exist__", []),
-    (err: unknown) => err instanceof Error,
+    (err: unknown) => err instanceof Error
   );
 });
 
@@ -121,7 +121,7 @@ test("tarball path changes with different name/version combinations", async () =
     const actual = join(outDir, `${name}-${version}.tgz`);
     assert.ok(
       actual.replaceAll("\\", "/").endsWith(expected),
-      `Expected path to end with ${expected}, got ${actual}`,
+      `Expected path to end with ${expected}, got ${actual}`
     );
   }
 });
@@ -171,7 +171,7 @@ test("non-repository git errors propagate (are not ignored)", () => {
     assert.equal(
       shouldIgnoreGitError(message),
       false,
-      `Expected error "${message}" to propagate, but it was silently ignored`,
+      `Expected error "${message}" to propagate, but it was silently ignored`
     );
   }
 });

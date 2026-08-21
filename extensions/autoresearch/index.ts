@@ -79,7 +79,8 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
     if (state.hasIdeas) {
       const lines = fs.readFileSync(paths(ctx.cwd).ideas, "utf-8").split("\n");
       const count = lines.filter((l) => l.startsWith("- ")).length;
-      if (count > 0) ctx.ui.notify(`💡 .autoresearch/autoresearch.ideas.md heeft ${count} ideeën`, "info");
+      if (count > 0)
+        ctx.ui.notify(`💡 .autoresearch/autoresearch.ideas.md heeft ${count} ideeën`, "info");
     }
   });
 
