@@ -1,7 +1,7 @@
 # Autoresearch Extension Audit
 
 Date: 2026-05-08
-Scope: uploaded `OnlineChefGroep/autoresearch-skill` source archive.
+Scope: uploaded `GroepOnline/autoresearch-skill` source archive.
 
 ## Executive summary
 

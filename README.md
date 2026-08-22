@@ -34,7 +34,7 @@ pi-autoresearch/
 From GitHub:
 
 ```bash
-pi install git:https://github.com/OnlineChefGroep/autoresearch-skill
+pi install git:https://github.com/GroepOnline/autoresearch-skill
 ```
 
 From a local checkout:
