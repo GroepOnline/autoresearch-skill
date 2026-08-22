@@ -4,7 +4,7 @@ This repo-local environment package was added for new-repository bootstrap on 20
 
 ## Repository profile
 
-- Repository: [OnlineChefGroep/autoresearch-skill](https://github.com/OnlineChefGroep/autoresearch-skill)
+- Repository: [GroepOnline/autoresearch-skill](https://github.com/GroepOnline/autoresearch-skill)
 - Created: 2026-05-05T22:42:55Z
 - Visibility: INTERNAL
 - Classified stack: TypeScript skill scaffold / AI agent research loop
