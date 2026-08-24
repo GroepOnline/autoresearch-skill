@@ -14,7 +14,7 @@ concurrency:
 
 jobs:
   sync:
-    uses: GroepOnline/OrgBeheer/.github/workflows/chef-dev-sync-reusable.yml@main
+    uses: GroepOnline/OrgBeheer/.github/workflows/chef-dev-sync-reusable.yml@61838e02e8e3ed7cdb88711da9eb42dc00f8c521
     secrets:
       LINEAR_API_KEY: ${{ secrets.LINEAR_API_KEY }}
       NOTION_API_KEY: ${{ secrets.NOTION_API_KEY }}
