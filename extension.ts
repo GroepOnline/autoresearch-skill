@@ -161,7 +161,7 @@ function delta(current: number, baseline: number): string {
 
 function footerText(state: ArState): string {
   if (!state.config) return "";
-  const { config, runCount, bestMetric, bestRun, baselineMetric, isPaused } = state;
+  const { config, runCount, bestMetric, baselineMetric, isPaused } = state;
   const last = state.results.at(-1);
   const icon = isPaused
     ? "⏸"
