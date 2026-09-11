@@ -3,6 +3,8 @@ import test from "node:test";
 import {
   buildContinuationMessage,
   evaluateContinuation,
+  recordLoopProgress,
+  restoreLoopProgress,
   type LoopState,
 } from "../extensions/autoresearch/loop.js";
 import { parseStartBudgets } from "../extensions/autoresearch/state.js";
@@ -141,6 +143,76 @@ test("loop continues when plateau limit not yet reached", () => {
     Date.now()
   );
   assert.equal(cont.shouldContinue, true);
+});
+
+test("recordLoopProgress counts a completed discard only once", () => {
+  const state = baseState({
+    runCount: 1,
+    decisions: [
+      { type: "decision", run: 1, action: "discard", reason: "worse", timestamp: "t1" },
+    ],
+  });
+  const loop = baseLoop();
+
+  assert.equal(recordLoopProgress(loop, state, 1_000), true);
+  assert.equal(loop.trackedRuns, 1);
+  assert.equal(loop.consecutiveDiscards, 1);
+  assert.equal(loop.runsSinceLastImprovement, 1);
+  assert.equal(loop.lastRunTs, 1_000);
+
+  assert.equal(recordLoopProgress(loop, state, 2_000), false);
+  assert.equal(loop.trackedRuns, 1);
+  assert.equal(loop.consecutiveDiscards, 1);
+  assert.equal(loop.runsSinceLastImprovement, 1);
+  assert.equal(loop.lastRunTs, 1_000);
+});
+
+test("recordLoopProgress derives counters from persisted decisions", () => {
+  const loop = baseLoop({ trackedRuns: 1, consecutiveDiscards: 99, runsSinceLastImprovement: 99 });
+  const state = baseState({
+    runCount: 2,
+    decisions: [
+      { type: "decision", run: 1, action: "discard", reason: "worse", timestamp: "t1" },
+      { type: "decision", run: 2, action: "discard", reason: "still worse", timestamp: "t2" },
+    ],
+  });
+
+  assert.equal(recordLoopProgress(loop, state, 2_000), true);
+  assert.equal(loop.trackedRuns, 2);
+  assert.equal(loop.consecutiveDiscards, 2);
+  assert.equal(loop.runsSinceLastImprovement, 2);
+});
+
+test("keep resets discard and plateau counters", () => {
+  const loop = baseLoop({ trackedRuns: 1, consecutiveDiscards: 1, runsSinceLastImprovement: 1 });
+  const state = baseState({
+    runCount: 2,
+    decisions: [
+      { type: "decision", run: 1, action: "discard", reason: "worse", timestamp: "t1" },
+      { type: "decision", run: 2, action: "keep", reason: "better", timestamp: "t2" },
+    ],
+  });
+
+  assert.equal(recordLoopProgress(loop, state, 2_000), true);
+  assert.equal(loop.consecutiveDiscards, 0);
+  assert.equal(loop.runsSinceLastImprovement, 0);
+});
+
+test("restoreLoopProgress reconstructs persisted counters after restart", () => {
+  const loop = baseLoop({ runsAtStart: 2, trackedRuns: 0 });
+  const state = baseState({
+    runCount: 5,
+    decisions: [
+      { type: "decision", run: 3, action: "keep", reason: "better", timestamp: "t3" },
+      { type: "decision", run: 4, action: "discard", reason: "worse", timestamp: "t4" },
+      { type: "decision", run: 5, action: "discard", reason: "worse", timestamp: "t5" },
+    ],
+  });
+
+  restoreLoopProgress(loop, state);
+  assert.equal(loop.trackedRuns, 3);
+  assert.equal(loop.consecutiveDiscards, 2);
+  assert.equal(loop.runsSinceLastImprovement, 2);
 });
 
 test("continuation prompt references centralized .autoresearch artifacts", () => {
