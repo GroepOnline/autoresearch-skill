@@ -1,4 +1,4 @@
-# Pi Autoresearch Extension
+# @groeponline/pi-autoresearch
 
 A full **Pi package** for bounded, benchmark-driven repository optimization. It ships both:
 
@@ -6,6 +6,23 @@ A full **Pi package** for bounded, benchmark-driven repository optimization. It 
 - an Agent Skill under `skills/autoresearch/` for progressive workflow guidance.
 
 Autoresearch helps a coding agent run controlled optimization experiments: establish a baseline, test one hypothesis, benchmark repeatedly, keep only meaningful improvements, and stop when budget, safety, or quality gates are hit.
+
+## Requirements
+
+- Node.js `>=18` (enforced by `package.json`).
+- A compatible Pi host when loading the extension; `@earendil-works/pi-coding-agent` is an optional peer provided by Pi.
+- Python 3 only when using the standalone helper CLI; the Pi extension itself is TypeScript.
+
+## What changes when you install it?
+
+| Native Pi | With `@groeponline/pi-autoresearch` |
+| --- | --- |
+| One-off repository edits | Bounded experiment loops with explicit run/time budgets |
+| Ad-hoc benchmark output | Structured `METRIC` parsing, noise checks, keep/discard decisions |
+| Session-local context | Append-only experiment state that can be resumed |
+| Manual safety discipline | Branch/scope/git/shell guards before and after each run |
+
+Autoresearch owns the **experiment loop**. It does not replace `pi-missions` durable project planning or `pi-agent-orchestrator` multi-agent execution.
 
 ## Package layout
 
@@ -31,6 +48,12 @@ pi-autoresearch/
 
 ## Install
 
+From npm:
+
+```bash
+pi install npm:@groeponline/pi-autoresearch
+```
+
 From GitHub:
 
 ```bash
@@ -55,7 +78,7 @@ For npm packaging:
 npm ci
 npm run validate
 npm run package
-pi install ./dist/pi-autoresearch-1.2.0.tgz
+pi install ./dist/groeponline-pi-autoresearch-1.2.0.tgz
 ```
 
 ## Pi resources
@@ -109,12 +132,12 @@ The `/autoresearch dashboard` command shows a standard dashboard with performanc
 
 ## Tools exposed to Pi
 
-| Tool                     | Purpose                                                                                                                            |
-| ------------------------ | ---------------------------------------------------------------------------------------------------------------------------------- | ---------------------------------------------------------- |
-| `autoresearch_state`     | Read and validate `autoresearch.jsonl`, config, baseline, best result and run history.                                             |
-| `autoresearch_metric`    | Parse `METRIC name=value direction=lower                                                                                           | higher` benchmark output and calculate summary/noise data. |
-| `autoresearch_decide`    | Decide `baseline`, `keep`, `discard`, or `stop` using metric direction, effect-size threshold, noise floor and correctness result. |
-| `autoresearch_dashboard` | Generate a markdown dashboard from append-only state.                                                                              |
+| Tool | Purpose |
+| --- | --- |
+| `autoresearch_state` | Read and validate the JSONL state, config, baseline, best result, and run history. |
+| `autoresearch_metric` | Parse `METRIC name=value direction=lower|higher` benchmark output and calculate summary/noise data. |
+| `autoresearch_decide` | Decide `baseline`, `keep`, `discard`, or `stop` using metric direction, effect-size threshold, noise floor, and correctness result. |
+| `autoresearch_dashboard` | Generate a Markdown dashboard from append-only state. |
 
 ## Runtime files created in target repositories
 
@@ -148,6 +171,18 @@ Autoresearch is intentionally bounded. It stops or blocks continuation on:
 - five consecutive discards;
 - plateau after ten runs without improvement;
 - explicit `.autoresearch-off` pause sentinel.
+
+## Privacy and dependency boundary
+
+The extension has no package-owned telemetry backend and makes no outbound network requests itself. It runs local Git commands and user-owned benchmark/correctness commands; those user-provided commands can perform network I/O independently, so review them before starting an experiment.
+
+Runtime dependency rationale:
+
+- `zod` validates structured tool input and experiment data.
+- `@earendil-works/pi-coding-agent` is an optional peer supplied by the Pi host, not bundled into this package.
+- ESLint, TypeScript, `tsx`, and Prettier are development-only and are not part of the published runtime dependency surface.
+
+See [SECURITY.md](SECURITY.md) for reporting and threat boundaries.
 
 ## Benchmark contract
 
@@ -231,11 +266,13 @@ The validation suite runs:
 ```bash
 npm ci
 npm run validate
+npm run format:check
+npm run audit:ci
+npm run verify:package
 npm run package
-npm publish --access public
 ```
 
-Before publishing, verify the repository URL, package owner, changelog and npm permissions.
+Releases are published from an exact `v*` Git tag by GitHub Actions. The workflow repeats validation, audit, and tarball verification before publishing to npmjs.org. The unscoped name `pi-autoresearch` belongs to another publisher; this repository publishes only `@groeponline/pi-autoresearch`.
 
 ## License
 

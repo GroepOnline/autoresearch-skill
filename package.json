@@ -1,10 +1,10 @@
 {
-  "name": "pi-autoresearch",
+  "name": "@groeponline/pi-autoresearch",
   "version": "1.2.0",
   "description": "Pi extension and Agent Skill for bounded, benchmark-driven autoresearch loops in code repositories.",
   "type": "module",
   "license": "MIT",
-  "author": "OnlineChef",
+  "author": "GroepOnline",
   "homepage": "https://github.com/GroepOnline/autoresearch-skill#readme",
   "bugs": {
     "url": "https://github.com/GroepOnline/autoresearch-skill/issues"
@@ -21,7 +21,8 @@
     "autoresearch",
     "benchmark",
     "optimization",
-    "coding-agent"
+    "coding-agent",
+    "groeponline"
   ],
   "engines": {
     "node": ">=18"
@@ -39,7 +40,8 @@
     "types/",
     "LICENSE",
     "CHANGELOG.md",
-    "README.md"
+    "README.md",
+    "SECURITY.md"
   ],
   "pi": {
     "extensions": [
@@ -63,7 +65,10 @@
     "format": "prettier --write \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
     "format:check": "prettier --check \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
     "package": "node scripts/package-clean.mjs",
-    "package:clean": "node scripts/package-clean.mjs"
+    "package:clean": "node scripts/package-clean.mjs",
+    "audit:ci": "npm audit --audit-level=high",
+    "verify:package": "node scripts/verify-package.mjs",
+    "prepublishOnly": "npm run validate && npm run format:check && npm run audit:ci && npm run verify:package"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -86,5 +91,9 @@
   },
   "dependencies": {
     "zod": "^3.24.4"
+  },
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
   }
 }

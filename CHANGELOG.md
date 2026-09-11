@@ -2,6 +2,18 @@
 
 All notable changes to the Autoresearch Skill project.
 
+## Unreleased
+
+### Changed
+
+- Prepare the existing 1.2.0 code line for first GroepOnline-scoped distribution as `@groeponline/pi-autoresearch`; the unscoped npm name is owned by another publisher.
+- Standardize public package metadata, security/privacy/dependency documentation, exact-tag npm publishing, and actual-tarball verification.
+- Use npm's returned tarball filename instead of constructing one, so scoped package archives resolve correctly.
+
+### Security
+
+- Refresh lockfile resolutions to remove all currently reported npm audit findings.
+
 ## [1.2.0] — 2026-05-08
 
 ### Added

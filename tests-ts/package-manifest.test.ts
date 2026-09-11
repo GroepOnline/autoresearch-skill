@@ -5,7 +5,7 @@
  * - Version bumped to 1.0.0
  * - `private` field removed (package is now publishable)
  * - New metadata fields: description, license, author, homepage, bugs, repository
- * - Repository URL updated from GroepChef to OnlineChef
+ * - Repository URL standardized on GroepOnline
  * - New keywords added: pi-skill, agent-skill, optimization, coding-agent
  * - `skills/` and `docs/` added to the `files` array
  * - `AUDIT.md` added to the `files` array
@@ -52,33 +52,33 @@ test("package has MIT license", () => {
 });
 
 test("package has author field", () => {
-  assert.equal(pkg["author"], "OnlineChef");
+  assert.equal(pkg["author"], "GroepOnline");
 });
 
-test("package homepage points to OnlineChef organisation", () => {
+test("package homepage points to GroepOnline organisation", () => {
   const homepage = pkg["homepage"] as string;
   assert.ok(
-    homepage.includes("OnlineChef"),
-    `Expected homepage to reference OnlineChef, got: ${homepage}`
+    homepage.includes("GroepOnline"),
+    `Expected homepage to reference GroepOnline, got: ${homepage}`
   );
 });
 
-test("package bugs URL points to OnlineChef organisation", () => {
+test("package bugs URL points to GroepOnline organisation", () => {
   const bugs = pkg["bugs"] as { url: string };
   assert.ok(typeof bugs === "object" && bugs !== null);
   assert.ok(
-    bugs.url.includes("OnlineChef"),
-    `Expected bugs.url to reference OnlineChef, got: ${bugs.url}`
+    bugs.url.includes("GroepOnline"),
+    `Expected bugs.url to reference GroepOnline, got: ${bugs.url}`
   );
 });
 
-test("package repository URL points to OnlineChef organisation", () => {
+test("package repository URL points to GroepOnline organisation", () => {
   const repo = pkg["repository"] as { type: string; url: string };
   assert.ok(typeof repo === "object" && repo !== null);
   assert.equal(repo.type, "git");
   assert.ok(
-    repo.url.includes("OnlineChef"),
-    `Expected repository.url to reference OnlineChef, got: ${repo.url}`
+    repo.url.includes("GroepOnline"),
+    `Expected repository.url to reference GroepOnline, got: ${repo.url}`
   );
 });
 
@@ -107,6 +107,7 @@ test("keywords include all required discovery terms", () => {
     "benchmark",
     "optimization",
     "coding-agent",
+    "groeponline",
   ];
 
   for (const kw of required) {
@@ -127,6 +128,11 @@ test("files array includes skills/ directory", () => {
 test("files array includes docs/ directory", () => {
   const files = pkg["files"] as string[];
   assert.ok(files.includes("docs/"), `Expected "docs/" in files array`);
+});
+
+test("files array includes SECURITY.md", () => {
+  const files = pkg["files"] as string[];
+  assert.ok(files.includes("SECURITY.md"), `Expected "SECURITY.md" in files array`);
 });
 
 test("files array includes AUDIT.md via docs/ directory", () => {
@@ -190,8 +196,14 @@ test("scripts.package and scripts.package:clean point to the same script", () =>
 // Regression: ensure no accidental field regressions
 // ---------------------------------------------------------------------------
 
-test("package name is still pi-autoresearch", () => {
-  assert.equal(pkg["name"], "pi-autoresearch");
+test("package uses the GroepOnline npm scope", () => {
+  assert.equal(pkg["name"], "@groeponline/pi-autoresearch");
+});
+
+test("scoped package publishes publicly to npmjs", () => {
+  const publishConfig = pkg["publishConfig"] as { access: string; registry: string };
+  assert.equal(publishConfig.access, "public");
+  assert.equal(publishConfig.registry, "https://registry.npmjs.org");
 });
 
 test("package type is module (ESM)", () => {

@@ -38,6 +38,9 @@ try {
 }
 
 mkdirSync(outDir, { recursive: true });
-const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8"));
-run("npm", ["pack", "--pack-destination", outDir], { stdio: "inherit" });
-console.log(join(outDir, `${pkg.name}-${pkg.version}.tgz`));
+const packOutput = run("npm", ["pack", "--json", "--pack-destination", outDir]);
+const packed = JSON.parse(packOutput);
+if (!Array.isArray(packed) || packed.length !== 1 || typeof packed[0]?.filename !== "string") {
+  throw new Error("npm pack did not return exactly one tarball filename");
+}
+console.log(join(outDir, packed[0].filename));

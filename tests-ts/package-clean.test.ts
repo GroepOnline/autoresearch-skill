@@ -97,33 +97,32 @@ test("typeof null !== 'string' guard returns empty string for null stdout", () =
 });
 
 // ---------------------------------------------------------------------------
-// Tests for the tarball path construction logic
-// (package-clean.mjs prints: join(outDir, `${pkg.name}-${pkg.version}.tgz`))
+// Tests for npm pack JSON filename handling. npm is authoritative because
+// scoped package names are sanitized in tarball filenames.
 // ---------------------------------------------------------------------------
 
-test("tarball path uses name and version from package.json", async () => {
-  const { join } = await import("node:path");
-  const outDir = "/dist";
-  const pkg = { name: "pi-autoresearch", version: "1.0.0" };
-  const tarball = join(outDir, `${pkg.name}-${pkg.version}.tgz`);
-  assert.equal(tarball.replaceAll("\\", "/"), "/dist/pi-autoresearch-1.0.0.tgz");
+function tarballPathFromPackJson(outDir: string, raw: string): string {
+  const packed = JSON.parse(raw) as Array<{ filename?: string }>;
+  if (!Array.isArray(packed) || packed.length !== 1 || typeof packed[0]?.filename !== "string") {
+    throw new Error("npm pack did not return exactly one tarball filename");
+  }
+  return join(outDir, packed[0].filename);
+}
+
+test("tarball path uses npm's scoped-package filename", () => {
+  const actual = tarballPathFromPackJson(
+    "/dist",
+    JSON.stringify([{ filename: "groeponline-pi-autoresearch-1.2.0.tgz" }])
+  );
+  assert.equal(
+    actual.replaceAll("\\", "/"),
+    "/dist/groeponline-pi-autoresearch-1.2.0.tgz"
+  );
 });
 
-test("tarball path changes with different name/version combinations", async () => {
-  const { join } = await import("node:path");
-  const outDir = "/output";
-  const cases: Array<[string, string, string]> = [
-    ["my-pkg", "2.3.0", "my-pkg-2.3.0.tgz"],
-    ["@scope/pkg", "0.1.0", "@scope/pkg-0.1.0.tgz"],
-    ["pi-autoresearch", "1.0.0", "pi-autoresearch-1.0.0.tgz"],
-  ];
-  for (const [name, version, expected] of cases) {
-    const actual = join(outDir, `${name}-${version}.tgz`);
-    assert.ok(
-      actual.replaceAll("\\", "/").endsWith(expected),
-      `Expected path to end with ${expected}, got ${actual}`
-    );
-  }
+test("tarball path rejects malformed npm pack output", () => {
+  assert.throws(() => tarballPathFromPackJson("/dist", "[]"));
+  assert.throws(() => tarballPathFromPackJson("/dist", JSON.stringify([{}])));
 });
 
 // ---------------------------------------------------------------------------
