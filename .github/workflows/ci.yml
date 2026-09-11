@@ -1,3 +1,7 @@
+# Ordinary private CI via the org reusable. Keep the workflow name `CI` and
+# job `ci` for check-name stability. validate.yml is the authoritative gate.
+# The pinned reusable already uses the pr-isolated/heavy compatibility bridge;
+# do not retarget it to ubuntu-latest or unproven company-ci.
 name: CI
 
 on:
