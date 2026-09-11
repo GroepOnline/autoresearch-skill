@@ -148,9 +148,7 @@ test("loop continues when plateau limit not yet reached", () => {
 test("recordLoopProgress counts a completed discard only once", () => {
   const state = baseState({
     runCount: 1,
-    decisions: [
-      { type: "decision", run: 1, action: "discard", reason: "worse", timestamp: "t1" },
-    ],
+    decisions: [{ type: "decision", run: 1, action: "discard", reason: "worse", timestamp: "t1" }],
   });
   const loop = baseLoop();
 
