@@ -28,6 +28,58 @@ export interface LoopContinuation {
   remainingMinutes: number;
 }
 
+function deriveDecisionProgress(state: ArState): {
+  consecutiveDiscards: number;
+  runsSinceLastImprovement: number;
+} {
+  let consecutiveDiscards = 0;
+  for (let i = state.decisions.length - 1; i >= 0; i--) {
+    if (state.decisions[i].action === "discard") consecutiveDiscards++;
+    else break;
+  }
+
+  let runsSinceLastImprovement = 0;
+  for (let i = state.decisions.length - 1; i >= 0; i--) {
+    const action = state.decisions[i].action;
+    if (action === "keep" || action === "baseline") break;
+    runsSinceLastImprovement++;
+  }
+
+  return { consecutiveDiscards, runsSinceLastImprovement };
+}
+
+/** Restore derived loop counters from persisted JSONL without inventing a new run. */
+export function restoreLoopProgress(loop: LoopState, state: ArState): void {
+  const progress = deriveDecisionProgress(state);
+  loop.consecutiveDiscards = progress.consecutiveDiscards;
+  loop.runsSinceLastImprovement = progress.runsSinceLastImprovement;
+  loop.trackedRuns = Math.max(0, state.runCount - loop.runsAtStart);
+}
+
+/**
+ * Record progress only when JSONL contains a newly completed run.
+ *
+ * agent_end can fire more than once for the same experiment. Re-applying the
+ * last decision on every turn would inflate discard/plateau counters and stop
+ * Ralph early, so this update is intentionally idempotent for an unchanged
+ * run count.
+ */
+export function recordLoopProgress(loop: LoopState, state: ArState, nowMs: number): boolean {
+  const observedRuns = Math.max(0, state.runCount - loop.runsAtStart);
+  if (observedRuns <= loop.trackedRuns) return false;
+
+  if (loop.lastRunTs !== undefined) {
+    loop.lastRunDurationMs = Math.max(0, nowMs - loop.lastRunTs);
+  }
+  loop.lastRunTs = nowMs;
+
+  const progress = deriveDecisionProgress(state);
+  loop.consecutiveDiscards = progress.consecutiveDiscards;
+  loop.runsSinceLastImprovement = progress.runsSinceLastImprovement;
+  loop.trackedRuns = observedRuns;
+  return true;
+}
+
 export function evaluateContinuation(
   state: ArState,
   loop: LoopState,
