@@ -1,16 +1,8 @@
 /**
- * Tests for the package.json changes introduced in this PR.
+ * Contract tests for the publishable package manifest.
  *
- * Covered changes:
- * - Version bumped to 1.0.0
- * - `private` field removed (package is now publishable)
- * - New metadata fields: description, license, author, homepage, bugs, repository
- * - Repository URL updated from GroepChef to OnlineChef
- * - New keywords added: pi-skill, agent-skill, optimization, coding-agent
- * - `skills/` and `docs/` added to the `files` array
- * - `AUDIT.md` added to the `files` array
- * - `pi.skills` changed from ["."] to ["./skills"]
- * - New `package` script pointing at package-clean.mjs
+ * These assertions protect package identity, discovery metadata, shipped files,
+ * Pi entrypoints, packaging scripts, and the canonical GroepOnline repository URLs.
  */
 
 import assert from "node:assert/strict";
@@ -25,22 +17,15 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as Rec
   unknown
 >;
 
-// ---------------------------------------------------------------------------
-// Version and publishability
-// ---------------------------------------------------------------------------
+const canonicalRepoUrl = "https://github.com/GroepOnline/autoresearch-skill";
 
 test("package version is 1.2.0", () => {
   assert.equal(pkg["version"], "1.2.0");
 });
 
 test("package is not marked private (publishable)", () => {
-  // The `private` field must be absent or falsy so `npm publish` is allowed.
   assert.ok(!pkg["private"], "package.json must not have private:true for a publishable package");
 });
-
-// ---------------------------------------------------------------------------
-// Required metadata fields added in this PR
-// ---------------------------------------------------------------------------
 
 test("package has a description", () => {
   assert.equal(typeof pkg["description"], "string");
@@ -55,31 +40,21 @@ test("package has author field", () => {
   assert.equal(pkg["author"], "OnlineChef");
 });
 
-test("package homepage points to OnlineChef organisation", () => {
-  const homepage = pkg["homepage"] as string;
-  assert.ok(
-    homepage.includes("OnlineChef"),
-    `Expected homepage to reference OnlineChef, got: ${homepage}`
-  );
+test("package homepage points to canonical GroepOnline repository", () => {
+  assert.equal(pkg["homepage"], `${canonicalRepoUrl}#readme`);
 });
 
-test("package bugs URL points to OnlineChef organisation", () => {
+test("package bugs URL points to canonical GroepOnline repository", () => {
   const bugs = pkg["bugs"] as { url: string };
   assert.ok(typeof bugs === "object" && bugs !== null);
-  assert.ok(
-    bugs.url.includes("OnlineChef"),
-    `Expected bugs.url to reference OnlineChef, got: ${bugs.url}`
-  );
+  assert.equal(bugs.url, `${canonicalRepoUrl}/issues`);
 });
 
-test("package repository URL points to OnlineChef organisation", () => {
+test("package repository URL points to canonical GroepOnline repository", () => {
   const repo = pkg["repository"] as { type: string; url: string };
   assert.ok(typeof repo === "object" && repo !== null);
   assert.equal(repo.type, "git");
-  assert.ok(
-    repo.url.includes("OnlineChef"),
-    `Expected repository.url to reference OnlineChef, got: ${repo.url}`
-  );
+  assert.equal(repo.url, `git+${canonicalRepoUrl}.git`);
 });
 
 test("package repository URL no longer references GroepChef", () => {
@@ -89,10 +64,6 @@ test("package repository URL no longer references GroepChef", () => {
     `repository.url must not reference old GroepChef org, got: ${repo.url}`
   );
 });
-
-// ---------------------------------------------------------------------------
-// Keywords
-// ---------------------------------------------------------------------------
 
 test("keywords include all required discovery terms", () => {
   const keywords = pkg["keywords"] as string[];
@@ -114,10 +85,6 @@ test("keywords include all required discovery terms", () => {
   }
 });
 
-// ---------------------------------------------------------------------------
-// Files array
-// ---------------------------------------------------------------------------
-
 test("files array includes skills/ directory", () => {
   const files = pkg["files"] as string[];
   assert.ok(Array.isArray(files));
@@ -136,7 +103,6 @@ test("files array includes AUDIT.md via docs/ directory", () => {
 
 test("files array retains pre-existing entries", () => {
   const files = pkg["files"] as string[];
-  // These entries existed before the PR and must not have been removed.
   const retained = ["extensions/", "skills/", "README.md", "LICENSE"];
   for (const entry of retained) {
     assert.ok(
@@ -145,10 +111,6 @@ test("files array retains pre-existing entries", () => {
     );
   }
 });
-
-// ---------------------------------------------------------------------------
-// Pi manifest
-// ---------------------------------------------------------------------------
 
 test("pi.skills is ['./skills'] (not ['.'])", () => {
   const pi = pkg["pi"] as { extensions: string[]; skills: string[] };
@@ -163,10 +125,6 @@ test("pi.extensions still points to the native extension entrypoint", () => {
     "pi.extensions must include the native extension entrypoint"
   );
 });
-
-// ---------------------------------------------------------------------------
-// Scripts
-// ---------------------------------------------------------------------------
 
 test("scripts.package is defined and points to package-clean.mjs", () => {
   const scripts = pkg["scripts"] as Record<string, string>;
@@ -185,10 +143,6 @@ test("scripts.package and scripts.package:clean point to the same script", () =>
     "Both 'package' and 'package:clean' scripts must resolve to the same command"
   );
 });
-
-// ---------------------------------------------------------------------------
-// Regression: ensure no accidental field regressions
-// ---------------------------------------------------------------------------
 
 test("package name is still pi-autoresearch", () => {
   assert.equal(pkg["name"], "pi-autoresearch");
