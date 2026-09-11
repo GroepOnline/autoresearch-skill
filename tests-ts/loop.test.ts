@@ -168,7 +168,11 @@ test("recordLoopProgress counts a completed discard only once", () => {
 });
 
 test("recordLoopProgress derives counters from persisted decisions", () => {
-  const loop = baseLoop({ trackedRuns: 1, consecutiveDiscards: 99, runsSinceLastImprovement: 99 });
+  const loop = baseLoop({
+    trackedRuns: 1,
+    consecutiveDiscards: 99,
+    runsSinceLastImprovement: 99,
+  });
   const state = baseState({
     runCount: 2,
     decisions: [
@@ -184,7 +188,11 @@ test("recordLoopProgress derives counters from persisted decisions", () => {
 });
 
 test("keep resets discard and plateau counters", () => {
-  const loop = baseLoop({ trackedRuns: 1, consecutiveDiscards: 1, runsSinceLastImprovement: 1 });
+  const loop = baseLoop({
+    trackedRuns: 1,
+    consecutiveDiscards: 1,
+    runsSinceLastImprovement: 1,
+  });
   const state = baseState({
     runCount: 2,
     decisions: [
