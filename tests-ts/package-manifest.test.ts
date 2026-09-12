@@ -144,8 +144,9 @@ test("scripts.package and scripts.package:clean point to the same script", () =>
   );
 });
 
-test("package name is still pi-autoresearch", () => {
-  assert.equal(pkg["name"], "pi-autoresearch");
+test("package name is the scoped @groeponline/pi-autoresearch", () => {
+  // Unscoped pi-autoresearch is owned by an unrelated publisher on npm.
+  assert.equal(pkg["name"], "@groeponline/pi-autoresearch");
 });
 
 test("package type is module (ESM)", () => {
