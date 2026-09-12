@@ -43,6 +43,9 @@ const DEFAULT_PROTECTED_PATTERNS = [
   /^node_modules(?:\/|$)/,
   /^\.env(?:\.|$)/,
   /(?:^|\/)\.env(?:\.|$)/,
+  /(?:^|\/)(?:\.npmrc|\.pypirc|\.netrc)$/,
+  /(?:^|\/)\.aws\/credentials$/,
+  /(?:^|\/)\.config\/gcloud\/(?:application_default_credentials\.json|credentials\.db)$/,
   /(?:^|\/)(?:id_rsa|id_ed25519|known_hosts)$/,
   /(?:^|\/).*\.(?:pem|key|p12|pfx)$/,
 ];
@@ -100,7 +103,6 @@ const ALLOWED_COMMAND_WHITELIST: Array<[string, RegExp | null]> = [
   ["which", /^[\w.-]+$/],
   ["date", null],
   ["uname", /^(-a)?$/],
-  ["env", null],
 ];
 
 const SHELL_CONTROL_OPERATOR_PATTERN = /(?:&&|\|\||[;&|<>])/;
@@ -122,6 +124,8 @@ const SHELL_PROTECTED_PATH_PATTERNS = [
   /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
   /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
   /(?:^|[\s"'=<>;&|])(?:\.\/)?[^\s"'<>;&|]*\.(?:pem|key|p12|pfx)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|])(?:\/|\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:\.npmrc|\.pypirc|\.netrc)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|])(?:\/|\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:\.aws\/credentials|\.config\/gcloud\/(?:application_default_credentials\.json|credentials\.db))(?=$|[\s"'<>;&|])/,
 ];
 
 function normalizeRelativePath(cwd: string, rawPath: string): string {

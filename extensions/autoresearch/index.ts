@@ -17,6 +17,8 @@ import type { LoopState } from "./loop.js";
 import {
   buildContinuationMessage,
   evaluateContinuation,
+  recordLoopProgress,
+  restoreLoopProgress,
   summarizeLoopStop,
   type LoopContinuation,
 } from "./loop.js";
@@ -52,26 +54,8 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       .pop();
     if (lastLoopEntry?.data) activeLoop = lastLoopEntry.data as LoopState;
 
-    // Re-derive consecutive discards and plateau from JSONL (survives session restarts)
-    if (activeLoop) {
-      const state = readState(ctx.cwd);
-      let cons = 0;
-      for (let i = state.decisions.length - 1; i >= 0; i--) {
-        if (state.decisions[i].action === "discard") cons++;
-        else break;
-      }
-      activeLoop.consecutiveDiscards = cons;
-
-      let since = 0;
-      for (let i = state.decisions.length - 1; i >= 0; i--) {
-        if (state.decisions[i].action === "keep" || state.decisions[i].action === "baseline") break;
-        since++;
-      }
-      activeLoop.runsSinceLastImprovement = since;
-
-      // Restore tracked runs count
-      activeLoop.trackedRuns = state.runCount - activeLoop.runsAtStart;
-    }
+    // Re-derive persisted counters from JSONL so a session restart is deterministic.
+    if (activeLoop) restoreLoopProgress(activeLoop, readState(ctx.cwd));
 
     const state = readState(ctx.cwd);
     ctx.ui.setStatus("autoresearch", footerText(state));
@@ -149,32 +133,10 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
       }
     }
 
-    // ── Track run duration ──────────────────────────────────────────────────
-    if (activeLoop) {
-      const newRunCount = state.runCount - activeLoop.runsAtStart;
-      if (newRunCount > activeLoop.trackedRuns) {
-        const now = Date.now();
-        if (activeLoop.lastRunTs !== undefined) {
-          activeLoop.lastRunDurationMs = now - activeLoop.lastRunTs;
-        }
-        activeLoop.lastRunTs = now;
-        activeLoop.trackedRuns = newRunCount;
-      }
-    }
+    // Update duration/discard/plateau counters only when JSONL gained a new run.
+    if (activeLoop) recordLoopProgress(activeLoop, state, Date.now());
 
     if (!activeLoop || activeLoop.mode === "assisted") return;
-
-    // Track consecutive discards + plateau
-    const lastDecision = state.decisions.at(-1);
-    if (lastDecision) {
-      if (lastDecision.action === "keep" || lastDecision.action === "baseline") {
-        activeLoop.consecutiveDiscards = 0;
-        activeLoop.runsSinceLastImprovement = 0;
-      } else if (lastDecision.action === "discard") {
-        activeLoop.consecutiveDiscards++;
-        activeLoop.runsSinceLastImprovement++;
-      }
-    }
 
     const cont = evaluateContinuation(state, activeLoop, Date.now());
     if (!cont.shouldContinue) {
@@ -183,7 +145,6 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         { customType: "autoresearch-stop", content: summary, display: true },
         { triggerTurn: false }
       );
-      // ── Write stop summary to disk ──────────────────────────────────────
       writeStopSummary(ctx.cwd, activeLoop, cont, state);
       activeLoop = null;
       pi.appendEntry("autoresearch-loop", null);
@@ -255,7 +216,8 @@ function writeStopSummary(
   if (!config) return;
 
   const ts = new Date().toISOString().replace(/[:.]/g, "-").slice(0, 19);
-  const filePath = path.join(cwd, "experiments", `summary-${ts}.md`);
+  const dir = path.join(paths(cwd).dir, "summaries");
+  const filePath = path.join(dir, `summary-${ts}.md`);
 
   const lines = [
     `# Autoresearch Stop Summary`,
@@ -295,8 +257,7 @@ function writeStopSummary(
   lines.push("", `*Gegenereerd door autoresearch plugin*`);
 
   try {
-    const dir = path.join(cwd, "experiments");
-    if (!fs.existsSync(dir)) fs.mkdirSync(dir, { recursive: true });
+    fs.mkdirSync(dir, { recursive: true });
     fs.writeFileSync(filePath, lines.join("\n") + "\n");
   } catch {
     /* best-effort */
