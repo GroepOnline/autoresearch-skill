@@ -4,6 +4,14 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.4.0] - 2026-09-12
+
+### Added
+- per-package preview container via npm artifact + smoke test (#17)
+
+### Fixed
+- type the unpinned version assertion as string (#19)
+- unpin package version assertion (releases bump it) (#18)
 ## [1.3.0] - 2026-09-12
 
 ### Changed
