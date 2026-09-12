@@ -20,11 +20,8 @@ const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as Rec
 const canonicalRepoUrl = "https://github.com/GroepOnline/autoresearch-skill";
 
 test("package version is semver (never pinned; releases bump it)", () => {
-  assert.match(
-    pkg["version"],
-    /^\d+\.\d+\.\d+$/,
-    `Expected semver version, got: ${pkg["version"]}`
-  );
+  const version = pkg["version"] as string;
+  assert.match(version, /^\d+\.\d+\.\d+$/, `Expected semver version, got: ${version}`);
 });
 
 test("package is not marked private (publishable)", () => {
