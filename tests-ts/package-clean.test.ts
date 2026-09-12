@@ -98,27 +98,30 @@ test("typeof null !== 'string' guard returns empty string for null stdout", () =
 
 // ---------------------------------------------------------------------------
 // Tests for the tarball path construction logic
-// (package-clean.mjs prints: join(outDir, `${pkg.name}-${pkg.version}.tgz`))
+// (package-clean.mjs prints: join(outDir, tarballName(pkg.name, pkg.version)))
 // ---------------------------------------------------------------------------
 
 test("tarball path uses name and version from package.json", async () => {
   const { join } = await import("node:path");
+  // @ts-expect-error untyped helper script (checked at runtime)
+  const { tarballName } = await import("../scripts/package-clean.mjs");
   const outDir = "/dist";
-  const pkg = { name: "pi-autoresearch", version: "1.0.0" };
-  const tarball = join(outDir, `${pkg.name}-${pkg.version}.tgz`);
+  const tarball = join(outDir, tarballName("pi-autoresearch", "1.0.0"));
   assert.equal(tarball.replaceAll("\\", "/"), "/dist/pi-autoresearch-1.0.0.tgz");
 });
 
 test("tarball path changes with different name/version combinations", async () => {
   const { join } = await import("node:path");
+  // @ts-expect-error untyped helper script (checked at runtime)
+  const { tarballName } = await import("../scripts/package-clean.mjs");
   const outDir = "/output";
   const cases: Array<[string, string, string]> = [
     ["my-pkg", "2.3.0", "my-pkg-2.3.0.tgz"],
-    ["@scope/pkg", "0.1.0", "@scope/pkg-0.1.0.tgz"],
-    ["pi-autoresearch", "1.0.0", "pi-autoresearch-1.0.0.tgz"],
+    ["@scope/pkg", "0.1.0", "scope-pkg-0.1.0.tgz"],
+    ["@groeponline/pi-autoresearch", "1.2.0", "groeponline-pi-autoresearch-1.2.0.tgz"],
   ];
   for (const [name, version, expected] of cases) {
-    const actual = join(outDir, `${name}-${version}.tgz`);
+    const actual = join(outDir, tarballName(name, version));
     assert.ok(
       actual.replaceAll("\\", "/").endsWith(expected),
       `Expected path to end with ${expected}, got ${actual}`

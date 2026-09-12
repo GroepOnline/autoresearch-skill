@@ -300,10 +300,13 @@ test("openai.yaml interface.brand_color is a valid CSS hex colour", () => {
 // Cross-file consistency checks
 // ---------------------------------------------------------------------------
 
-test("SKILL.md name matches package.json name", () => {
+test("SKILL.md name matches package.json name (scope-insensitive)", () => {
   const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as { name: string };
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
-  assert.equal(fm["name"], pkg.name, "SKILL.md frontmatter name must match package.json name");
+  // The npm package is scoped (@groeponline/pi-autoresearch) while the
+  // agent skill id stays unscoped (pi-autoresearch).
+  const unscoped = pkg.name.startsWith("@") ? pkg.name.split("/")[1] : pkg.name;
+  assert.equal(fm["name"], unscoped, "SKILL.md frontmatter name must match the unscoped package name");
 });
 
 test("skills/autoresearch/ is under the path declared in pi.skills", () => {

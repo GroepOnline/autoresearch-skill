@@ -2,6 +2,12 @@
 
 All notable changes to the Autoresearch Skill project.
 
+## [Unreleased]
+
+### Changed
+- Package is now published as `@groeponline/pi-autoresearch`: the unscoped `pi-autoresearch` name is owned by an unrelated publisher on npm. The agent skill id (`pi-autoresearch`) is unchanged.
+- Release pipeline: pushes to `main` now cut a tag and publish to npm automatically (org policy: +0.1 minor per change, major only for breaking).
+
 ## [1.2.0] — 2026-05-08
 
 ### Added

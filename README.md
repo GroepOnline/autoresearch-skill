@@ -55,7 +55,13 @@ For npm packaging:
 npm ci
 npm run validate
 npm run package
-pi install ./dist/pi-autoresearch-1.2.0.tgz
+pi install ./dist/groeponline-pi-autoresearch-1.2.0.tgz
+```
+
+Or install the published package from npm:
+
+```bash
+pi install npm:@groeponline/pi-autoresearch
 ```
 
 ## Pi resources
