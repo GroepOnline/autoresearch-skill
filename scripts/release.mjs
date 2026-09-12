@@ -3,7 +3,17 @@
 // Ported from GroepOnline/pi-missions (same org policy).
 // Local: npm run release [patch|minor|major|auto|x.y.z]
 // CI:    node scripts/release.mjs auto --push
-import { closeSync, existsSync, fsyncSync, openSync, readFileSync, renameSync, unlinkSync, writeFileSync } from "node:fs";
+import {
+  closeSync,
+  existsSync,
+  fsyncSync,
+  openSync,
+  readFileSync,
+  renameSync,
+  unlinkSync,
+  writeFileSync,
+  writeSync,
+} from "node:fs";
 import { execSync } from "node:child_process";
 import { fileURLToPath } from "node:url";
 import { dirname, join, resolve } from "node:path";
@@ -84,7 +94,10 @@ function refExists(ref) {
 
 function commitSubjectsSince(tag) {
   const log = git(tag ? `git log ${tag}..HEAD --pretty=%s` : "git log --pretty=%s");
-  return log.split("\n").map((line) => line.trim()).filter(Boolean);
+  return log
+    .split("\n")
+    .map((line) => line.trim())
+    .filter(Boolean);
 }
 
 export function buildReleaseNotesFromSubjects(subjects) {
@@ -160,7 +173,7 @@ export function parseLatestVersionTag(names) {
       parts: tag.slice(1).split(".").map(Number),
     }));
   versions.sort(
-    (a, b) => a.parts[0] - b.parts[0] || a.parts[1] - b.parts[1] || a.parts[2] - b.parts[2],
+    (a, b) => a.parts[0] - b.parts[0] || a.parts[1] - b.parts[1] || a.parts[2] - b.parts[2]
   );
   return versions.at(-1)?.tag ?? null;
 }
@@ -193,10 +206,7 @@ export function rewriteUnreleasedHeading(changelog, next, date) {
     return { changelog, rewritten: false };
   }
   return {
-    changelog: changelog.replace(
-      unreleasedHeading,
-      `## [Unreleased]\n\n## [${next}] - ${date}`,
-    ),
+    changelog: changelog.replace(unreleasedHeading, `## [Unreleased]\n\n## [${next}] - ${date}`),
     rewritten: true,
   };
 }
@@ -225,11 +235,7 @@ function main() {
   const pkg = JSON.parse(readFileSync(pkgPath, "utf8"));
   const tagBase = lastReleaseTag();
   const subjects = commitSubjectsSince(tagBase);
-  const { kind, next } = resolveReleaseVersion(
-    pkg.version,
-    kindArg,
-    subjects,
-  );
+  const { kind, next } = resolveReleaseVersion(pkg.version, kindArg, subjects);
   const tag = `v${next}`;
 
   if (flags.has("--dry-run")) {
@@ -237,31 +243,20 @@ function main() {
     return;
   }
 
-  const tagAction = existingTagAction(
-    pkg.version,
-    next,
-    refExists(`refs/tags/${tag}`),
-  );
+  const tagAction = existingTagAction(pkg.version, next, refExists(`refs/tags/${tag}`));
   if (tagAction === "already-cut") {
-    console.log(
-      `Tag ${tag} already exists and package.json is ${next}; skip bump.`,
-    );
+    console.log(`Tag ${tag} already exists and package.json is ${next}; skip bump.`);
     return;
   }
   if (tagAction === "collision") {
-    throw new Error(
-      `Tag ${tag} already exists; refusing to bump ${pkg.version} -> ${next}.`,
-    );
+    throw new Error(`Tag ${tag} already exists; refusing to bump ${pkg.version} -> ${next}.`);
   }
 
   pkg.version = next;
   atomicWriteFile(pkgPath, JSON.stringify(pkg, null, 2) + "\n");
 
   if (existsSync(lockPath)) {
-    writeFileSync(
-      lockPath,
-      rewritePackageLockVersion(readFileSync(lockPath, "utf8"), next),
-    );
+    writeFileSync(lockPath, rewritePackageLockVersion(readFileSync(lockPath, "utf8"), next));
   }
 
   const date = new Date().toISOString().slice(0, 10);
@@ -297,8 +292,7 @@ function main() {
 }
 
 const invokedAsCli =
-  Boolean(process.argv[1]) &&
-  resolve(process.argv[1]) === fileURLToPath(import.meta.url);
+  Boolean(process.argv[1]) && resolve(process.argv[1]) === fileURLToPath(import.meta.url);
 
 if (invokedAsCli) {
   try {
