@@ -1,18 +1,32 @@
 {
-  "name": "pi-autoresearch",
-  "version": "0.3.0",
-  "private": true,
+  "name": "@groeponline/pi-autoresearch",
+  "version": "2.0.0",
+  "description": "Pi extension and Agent Skill for bounded, benchmark-driven autoresearch loops in code repositories.",
   "type": "module",
+  "license": "MIT",
+  "publishConfig": {
+    "access": "public",
+    "registry": "https://registry.npmjs.org"
+  },
+  "author": "OnlineChef",
+  "homepage": "https://github.com/GroepOnline/autoresearch-skill#readme",
+  "bugs": {
+    "url": "https://github.com/GroepOnline/autoresearch-skill/issues"
+  },
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/GroepOnline/autoresearch-skill.git"
+  },
   "keywords": [
     "pi-package",
     "pi-extension",
+    "pi-skill",
+    "agent-skill",
     "autoresearch",
-    "benchmark"
+    "benchmark",
+    "optimization",
+    "coding-agent"
   ],
-  "repository": {
-    "type": "git",
-    "url": "git+https://github.com/GroepChef/autoresearch-skill.git"
-  },
   "engines": {
     "node": ">=18"
   },

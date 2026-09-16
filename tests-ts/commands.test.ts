@@ -79,7 +79,7 @@ test("package metadata points to existing skill directories", () => {
     pi: { skills: string[] };
   };
 
-  assert.equal(packageJson.version, "0.3.0");
+  assert.equal(packageJson.version, "2.0.0");
   assert.deepEqual(packageJson.pi.skills, ["./skills/pi-autoresearch"]);
   assert.equal(existsSync(join(process.cwd(), "skills", "pi-autoresearch", "SKILL.md")), true);
   assert.equal(existsSync(join(process.cwd(), "skills", "autoresearch", "SKILL.md")), true);
