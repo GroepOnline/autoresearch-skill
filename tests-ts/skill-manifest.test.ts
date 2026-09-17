@@ -306,7 +306,11 @@ test("SKILL.md name matches package.json name (scope-insensitive)", () => {
   // The npm package is scoped (@groeponline/pi-autoresearch) while the
   // agent skill id stays unscoped (pi-autoresearch).
   const unscoped = pkg.name.startsWith("@") ? pkg.name.split("/")[1] : pkg.name;
-  assert.equal(fm["name"], unscoped, "SKILL.md frontmatter name must match the unscoped package name");
+  assert.equal(
+    fm["name"],
+    unscoped,
+    "SKILL.md frontmatter name must match the unscoped package name"
+  );
 });
 
 test("skills/autoresearch/ is under the path declared in pi.skills", () => {
