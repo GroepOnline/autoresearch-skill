@@ -4,6 +4,10 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.6.0] - 2026-09-25
+
+### Maintenance
+- bump the npm_and_yarn group across 1 directory with 2 updates (#11)
 ## [1.5.0] - 2026-09-13
 
 ### Fixed
