@@ -1,5 +1,14 @@
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { execSync } from "node:child_process";
+import {
+  decideValue,
+  decideWithSamples,
+  formatDecisionText,
+  POLICY_VERSION,
+  type DecisionHistory,
+  type DecisionResult,
+  type GuardrailInput,
+} from "./decision.js";
 import { delta, direction, fmt, metricName, metricUnit, paths, readState } from "./state.js";
 import { dashboardRows } from "./ui.js";
 
@@ -48,6 +57,19 @@ function captureCommit(cwd: string): string | null {
     console.error(`[autoresearch] Failed to capture git commit in ${cwd}:`, error);
     return null;
   }
+}
+
+function decisionDetails(result: DecisionResult): Record<string, unknown> {
+  const details: Record<string, unknown> = {
+    action: result.action,
+    reason: result.reason,
+    improvement_pct: result.improvementPct,
+    outcome: result.outcome,
+    policy_version: result.policyVersion,
+  };
+  if (result.evidence) details.evidence = result.evidence;
+  if (result.guardrails) details.guardrails = result.guardrails;
+  return details;
 }
 
 export function registerAutoresearchTools(pi: ExtensionAPI): void {
@@ -198,24 +220,67 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_decide",
     label: "Autoresearch Decide",
-    description: "Decide baseline/keep/discard/stop for a candidate metric value against the current best. Returns action and reason.",
+    description: "Decide baseline/keep/discard/stop for a candidate metric. Pass repeated samples for a permutation significance test, guardrails, and stop-policy aware decisions. Returns action, outcome, and the evidence used.",
     promptSnippet: "Decide keep/discard/stop for a candidate metric against current best",
     promptGuidelines: [
       "Use autoresearch_decide after measuring a candidate to get a keep/discard/stop decision.",
-      "Always call autoresearch_decide before writing a decision event to autoresearch.jsonl.",
+      "Pass samples (and best_samples) whenever the benchmark produced repeated measurements; the decision then requires a statistically significant improvement above the minimum effect size.",
+      "Always call autoresearch_decide before writing a decision event to autoresearch.jsonl and store its evidence fields in the event.",
     ],
     parameters: {
       type: "object",
       properties: {
-        candidate: { type: "number", description: "The candidate metric value (median from current run)." },
+        candidate: { type: "number", description: "Single candidate value (legacy threshold-only path). Omit when samples are provided." },
         best: { type: "number", description: "Current best metric value. Omit for baseline runs." },
+        samples: { type: "array", items: { type: "number" }, description: "Repeated candidate samples from the benchmark (recommended: 7 measured samples)." },
+        best_samples: { type: "array", items: { type: "number" }, description: "Repeated samples of the current best run for the significance test." },
         direction: { type: "string", enum: ["lower", "higher"], description: "lower or higher is better." },
         min_effect_size_pct: { type: "number", description: "Minimum improvement % to keep. Default: 3." },
-        noise_floor_pct: { type: "number", description: "Noise floor %. Default: 0." },
+        noise_floor_pct: { type: "number", description: "Noise floor (CV %). When exceeded the decision stops instead of scoring. Default: 0." },
+        alpha: { type: "number", description: "Significance level for the permutation test. Default: 0.05." },
+        min_samples: { type: "integer", description: "Minimum samples per side required to score. Default: 3." },
         tests_passed: { type: "boolean", description: "Whether correctness checks passed. Default: true." },
-        noisy: { type: "boolean", description: "Whether benchmark was too noisy for a reliable result. Default: false." },
+        noisy: { type: "boolean", description: "Explicit signal that the benchmark was too noisy for a reliable result. Default: false." },
+        guardrails: {
+          type: "array",
+          description: "Secondary metrics that must not regress beyond their tolerance. Any failure discards the candidate.",
+          items: {
+            type: "object",
+            properties: {
+              name: { type: "string" },
+              direction: { type: "string", enum: ["lower", "higher"] },
+              tolerance_pct: { type: "number" },
+              candidate: { type: "number" },
+              best: { type: "number" },
+            },
+            required: ["name", "candidate", "best"],
+            additionalProperties: false,
+          },
+        },
+        history: {
+          type: "object",
+          description: "Loop history for stop-policy checks (consecutive discards, plateau, remaining budgets).",
+          properties: {
+            consecutive_discards: { type: "integer" },
+            runs_since_improvement: { type: "integer" },
+            max_consecutive_discards: { type: "integer" },
+            max_runs_without_improvement: { type: "integer" },
+            remaining_runs: { type: "number" },
+            remaining_minutes: { type: "number" },
+          },
+          additionalProperties: false,
+        },
+        simplification: {
+          type: "object",
+          description: "Justification for keeping a statistically tied result that removes complexity without changing behavior.",
+          properties: {
+            removes_complexity: { type: "boolean" },
+            behavior_unchanged: { type: "boolean" },
+          },
+          additionalProperties: false,
+        },
       },
-      required: ["candidate", "direction"],
+      required: ["direction"],
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
@@ -223,14 +288,28 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       if (!params || typeof params !== "object") {
         throw new Error("autoresearch_decide: params must be an object");
       }
-      if (typeof params.candidate !== "number" || !Number.isFinite(params.candidate)) {
-        throw new Error("autoresearch_decide: candidate must be a finite number");
-      }
-      if (params.best !== undefined && params.best !== null && !Number.isFinite(params.best)) {
-        throw new Error("autoresearch_decide: best must be a finite number if provided");
-      }
       if (params.direction !== "lower" && params.direction !== "higher") {
         throw new Error("autoresearch_decide: direction must be 'lower' or 'higher'");
+      }
+      const hasSamples = Array.isArray(params.samples) && params.samples.length > 0;
+      if (!hasSamples && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
+        throw new Error("autoresearch_decide: candidate must be a finite number when samples are not provided");
+      }
+      if (params.candidate !== undefined && params.candidate !== null && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
+        throw new Error("autoresearch_decide: candidate must be a finite number if provided");
+      }
+      if (params.best !== undefined && params.best !== null && (typeof params.best !== "number" || !Number.isFinite(params.best))) {
+        throw new Error("autoresearch_decide: best must be a finite number if provided");
+      }
+      if (params.samples !== undefined) {
+        if (!Array.isArray(params.samples) || params.samples.length === 0 || params.samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))) {
+          throw new Error("autoresearch_decide: samples must be a non-empty array of finite numbers");
+        }
+      }
+      if (params.best_samples !== undefined) {
+        if (!Array.isArray(params.best_samples) || params.best_samples.length === 0 || params.best_samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))) {
+          throw new Error("autoresearch_decide: best_samples must be a non-empty array of finite numbers");
+        }
       }
       if (params.min_effect_size_pct !== undefined && (typeof params.min_effect_size_pct !== "number" || !Number.isFinite(params.min_effect_size_pct))) {
         throw new Error("autoresearch_decide: min_effect_size_pct must be a finite number if provided");
@@ -238,53 +317,84 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       if (params.noise_floor_pct !== undefined && (typeof params.noise_floor_pct !== "number" || !Number.isFinite(params.noise_floor_pct))) {
         throw new Error("autoresearch_decide: noise_floor_pct must be a finite number if provided");
       }
-
-      const { candidate, best, direction, min_effect_size_pct = 3.0, noise_floor_pct = 0.0, tests_passed = true, noisy = false } = params;
-
-      if (!Number.isFinite(candidate)) throw new Error("candidate must be a finite number");
-      if (!["lower", "higher"].includes(direction)) throw new Error("direction must be lower or higher");
-
-      if (!tests_passed) {
-        return { content: [{ type: "text", text: "DISCARD — correctness checks failed" }], details: { action: "discard", reason: "correctness checks failed" } };
+      if (params.alpha !== undefined && (typeof params.alpha !== "number" || !Number.isFinite(params.alpha) || params.alpha <= 0 || params.alpha > 1)) {
+        throw new Error("autoresearch_decide: alpha must be in (0, 1] if provided");
       }
-      if (noisy) {
-        return { content: [{ type: "text", text: "STOP — benchmark too noisy for a reliable decision" }], details: { action: "stop", reason: "benchmark noise too high" } };
+      if (params.min_samples !== undefined && (!Number.isInteger(params.min_samples) || params.min_samples < 2)) {
+        throw new Error("autoresearch_decide: min_samples must be an integer >= 2 if provided");
       }
-      if (best === undefined || best === null) {
-        return { content: [{ type: "text", text: "BASELINE — first valid measurement" }], details: { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 } };
+      if (params.guardrails !== undefined && !Array.isArray(params.guardrails)) {
+        throw new Error("autoresearch_decide: guardrails must be an array if provided");
       }
-      if (!Number.isFinite(best)) throw new Error("best must be a finite number when provided");
-
-      const threshold = Math.max(min_effect_size_pct, noise_floor_pct);
-
-      // Follow benchmark-policy.md: keep if candidate beats the relative threshold
-      let improved: boolean;
-      let improvementPct: number;
-
-      if (best === 0) {
-        // Can't compute relative improvement against zero — use absolute direction check
-        improved = direction === "lower" ? candidate < 0 : candidate > 0;
-        improvementPct = improved ? Infinity : -Infinity;
-      } else {
-        const factor = 1 - threshold / 100;
-        const thresholdValue = direction === "lower"
-          ? best * factor
-          : best * (1 + threshold / 100);
-        improved = direction === "lower" ? candidate < thresholdValue : candidate > thresholdValue;
-        improvementPct = direction === "lower"
-          ? ((best - candidate) / Math.abs(best)) * 100
-          : ((candidate - best) / Math.abs(best)) * 100;
+      if (params.history !== undefined && (typeof params.history !== "object" || params.history === null)) {
+        throw new Error("autoresearch_decide: history must be an object if provided");
+      }
+      if (params.simplification !== undefined && (typeof params.simplification !== "object" || params.simplification === null)) {
+        throw new Error("autoresearch_decide: simplification must be an object if provided");
       }
 
-      if (improved) {
-        const pctStr = Number.isFinite(improvementPct) ? improvementPct.toFixed(2) : "∞";
-        const text = `KEEP — improved ${pctStr}% over current best (threshold ${threshold.toFixed(2)}%)`;
-        return { content: [{ type: "text", text }], details: { action: "keep", reason: text, improvement_pct: improvementPct } };
+      const guardrails: GuardrailInput[] = (params.guardrails ?? []).map((raw: Record<string, unknown>) => {
+        if (!raw || typeof raw !== "object") throw new Error("autoresearch_decide: each guardrail must be an object");
+        if (typeof raw.name !== "string" || raw.name.trim() === "") throw new Error("autoresearch_decide: guardrail.name is required");
+        if (raw.direction !== undefined && raw.direction !== "lower" && raw.direction !== "higher") {
+          throw new Error("autoresearch_decide: guardrail.direction must be 'lower' or 'higher'");
+        }
+        if (typeof raw.candidate !== "number" || !Number.isFinite(raw.candidate)) throw new Error("autoresearch_decide: guardrail.candidate must be a finite number");
+        if (typeof raw.best !== "number" || !Number.isFinite(raw.best)) throw new Error("autoresearch_decide: guardrail.best must be a finite number");
+        if (raw.tolerance_pct !== undefined && (typeof raw.tolerance_pct !== "number" || !Number.isFinite(raw.tolerance_pct))) {
+          throw new Error("autoresearch_decide: guardrail.tolerance_pct must be a finite number");
+        }
+        return {
+          name: raw.name,
+          direction: raw.direction === "higher" ? "higher" : "lower",
+          tolerance_pct: typeof raw.tolerance_pct === "number" ? raw.tolerance_pct : 2.0,
+          candidate: raw.candidate,
+          best: raw.best,
+        };
+      });
+
+      if (!hasSamples) {
+        const result = decideValue({
+          candidate: params.candidate,
+          best: params.best,
+          direction: params.direction,
+          minEffectSizePct: params.min_effect_size_pct,
+          noiseFloorPct: params.noise_floor_pct,
+          testsPassed: params.tests_passed ?? true,
+          noisy: params.noisy ?? false,
+        });
+        return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
       }
 
-      const pctStr = Number.isFinite(improvementPct) ? improvementPct.toFixed(2) : "-∞";
-      const text = `DISCARD — improvement ${pctStr}% is below threshold ${threshold.toFixed(2)}% or worse than best`;
-      return { content: [{ type: "text", text }], details: { action: "discard", reason: text, improvement_pct: improvementPct } };
+      if (params.noisy === true) {
+        const result: DecisionResult = {
+          action: "stop",
+          reason: "benchmark noise too high",
+          improvementPct: null,
+          policyVersion: POLICY_VERSION,
+          outcome: "noisy",
+        };
+        return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
+      }
+
+      const result = decideWithSamples({
+        candidateSamples: params.samples,
+        bestSamples: Array.isArray(params.best_samples) && params.best_samples.length > 0
+          ? params.best_samples
+          : (params.best !== undefined && params.best !== null ? [params.best] : null),
+        direction: params.direction,
+        policy: {
+          min_effect_size_pct: params.min_effect_size_pct,
+          noise_floor_pct: params.noise_floor_pct,
+          alpha: params.alpha,
+          min_samples: params.min_samples,
+        },
+        testsPassed: params.tests_passed ?? true,
+        guardrails,
+        history: params.history as DecisionHistory | undefined,
+        simplification: params.simplification,
+      });
+      return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
     },
   });
 

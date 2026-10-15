@@ -34,7 +34,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 4. Establish a baseline with the same benchmark policy used for future runs.
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
 6. Parse `METRIC name=value` lines, compute the benchmark summary, and record the result in append-only JSONL.
-7. Use `autoresearch_decide` (or the Python `decide` helper) for keep/discard decisions. Never keep a result worse than the current best.
+7. Use `autoresearch_decide` (or the Python `decide` helper) for keep/discard decisions. Pass `samples`/`best_samples` so keeps require a significant permutation-test improvement; never keep a result worse than the current best.
 8. The plugin auto-generates context injection tables and stop summaries — no manual worklog maintenance required.
 9. Stop when a budget, safety rule, noisy benchmark, consecutive discard limit, plateau, or explicit stop decision is reached.
 
@@ -65,7 +65,9 @@ Autoresearch sessions create runtime files in the target repository, not in this
 - Correctness beats performance. Any functional test failure is a discard unless the experiment was explicitly a failing diagnostic run.
 - Compare against the current best, not only against the original baseline.
 - Use median measured samples as the primary value.
-- Require a minimum effect size above the configured noise floor.
-- Prefer simplification when metrics are statistically tied and behavior is unchanged.
+- Pass repeated `samples` (and `best_samples`) to `autoresearch_decide`; keeps require a significant one-sided permutation test (`p < alpha`) and a minimum effect size above the configured noise floor.
+- Record the decision audit fields (`policy_version`, `outcome`, `improvement_pct`, `evidence`, `guardrails`) in the decision event.
+- Guardrails must not regress beyond their tolerance; a guardrail failure discards an otherwise improved candidate.
+- Prefer simplification when metrics are statistically tied and behavior is unchanged — the decision outcome is `simplification`.
 - Stop instead of continuing when state is corrupt, git state is unsafe, the benchmark is too noisy, or the run budget is exhausted.
 - Stop on consecutive discards (5) or plateau (10 runs without improvement) to avoid wasting budget.

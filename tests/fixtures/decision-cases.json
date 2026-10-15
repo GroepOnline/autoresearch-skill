@@ -1,0 +1,160 @@
+[
+  {
+    "name": "lower-is-better clear improvement is significant and kept",
+    "direction": "lower",
+    "candidateSamples": [100, 101, 99, 102, 98, 100, 101],
+    "bestSamples": [120, 121, 119, 122, 118, 120, 121],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "keep",
+    "expectedOutcome": "conclusive"
+  },
+  {
+    "name": "higher-is-better clear improvement is significant and kept",
+    "direction": "higher",
+    "candidateSamples": [120, 121, 119, 122, 118, 120, 121],
+    "bestSamples": [100, 101, 99, 102, 98, 100, 101],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "keep",
+    "expectedOutcome": "conclusive"
+  },
+  {
+    "name": "overlapping distributions are not significant",
+    "direction": "lower",
+    "candidateSamples": [100, 102, 98, 101, 99, 100, 101],
+    "bestSamples": [100, 99, 101, 100, 102, 98, 100],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "discard",
+    "expectedOutcome": "not_significant"
+  },
+  {
+    "name": "significant but below minimum effect size",
+    "direction": "higher",
+    "candidateSamples": [101, 101.2, 100.8, 101.1, 100.9, 101.0, 101.1],
+    "bestSamples": [100, 100.2, 99.8, 100.1, 99.9, 100.0, 100.1],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "discard",
+    "expectedOutcome": "below_threshold"
+  },
+  {
+    "name": "statistically tied result is kept for simplification",
+    "direction": "lower",
+    "candidateSamples": [100, 102, 98, 101, 99, 100, 101],
+    "bestSamples": [100, 99, 101, 100, 102, 98, 100],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "simplification": {
+      "removes_complexity": true,
+      "behavior_unchanged": true
+    },
+    "expectedAction": "keep",
+    "expectedOutcome": "simplification"
+  },
+  {
+    "name": "noisy benchmark stops the decision",
+    "direction": "lower",
+    "candidateSamples": [10, 80, 30, 120, 5, 90],
+    "bestSamples": [50, 55, 45, 60, 52, 48],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 10.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "stop",
+    "expectedOutcome": "noisy"
+  },
+  {
+    "name": "insufficient samples are rejected conservatively",
+    "direction": "lower",
+    "candidateSamples": [100, 101],
+    "bestSamples": [120, 121, 119, 122],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "discard",
+    "expectedOutcome": "insufficient_samples"
+  },
+  {
+    "name": "guardrail regression overrides primary improvement",
+    "direction": "lower",
+    "candidateSamples": [100, 101, 99, 102, 98, 100, 101],
+    "bestSamples": [120, 121, 119, 122, 118, 120, 121],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "guardrails": [
+      {
+        "name": "memory_mb",
+        "direction": "lower",
+        "tolerance_pct": 2.0,
+        "candidate": 110,
+        "best": 100
+      }
+    ],
+    "expectedAction": "discard",
+    "expectedOutcome": "guardrail_failed"
+  },
+  {
+    "name": "plateau history stops before scoring",
+    "direction": "lower",
+    "candidateSamples": [100, 101, 99, 102, 98, 100, 101],
+    "bestSamples": [120, 121, 119, 122, 118, 120, 121],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "history": {
+      "consecutive_discards": 0,
+      "runs_since_improvement": 10,
+      "max_runs_without_improvement": 10
+    },
+    "expectedAction": "stop",
+    "expectedOutcome": "stopped"
+  },
+  {
+    "name": "baseline when no best samples are provided",
+    "direction": "lower",
+    "candidateSamples": [100, 101, 99],
+    "bestSamples": null,
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3
+    },
+    "expectedAction": "baseline",
+    "expectedOutcome": "baseline"
+  }
+]

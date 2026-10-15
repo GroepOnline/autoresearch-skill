@@ -17,7 +17,7 @@ Use this skill to run controlled optimization research in a repository. The core
 4. Establish a baseline with the same benchmark policy used for future runs.
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
 6. Parse `METRIC name=value` lines, compute the benchmark summary, and record the result in append-only JSONL.
-7. Decide keep or discard using the benchmark policy. Never keep a result that is worse than the current best just because it beats the original baseline.
+7. Decide keep or discard using the benchmark policy. Pass repeated `samples` (and `best_samples`) to `autoresearch_decide` so keeps require a significant permutation-test improvement. Never keep a result that is worse than the current best just because it beats the original baseline.
 8. Generate or update the dashboard and worklog.
 9. Stop when a budget, safety rule, noisy benchmark, repeated discard limit, or local optimum condition is reached.
 
@@ -47,6 +47,8 @@ Autoresearch sessions create runtime files in the target repository, not in this
 - Correctness beats performance. Any functional test failure is a discard unless the experiment was explicitly a failing diagnostic run.
 - Compare against the current best, not only against the original baseline.
 - Use median measured samples as the primary value.
-- Require a minimum effect size above the configured noise floor.
-- Prefer simplification when metrics are statistically tied and behavior is unchanged.
-- Stop instead of continuing when state is corrupt, git state is unsafe, the benchmark is too noisy, or the run budget is exhausted.
+- Require a significant one-sided permutation-test improvement (`p < alpha`) plus a minimum effect size above the configured noise floor.
+- Record the decision audit fields (`outcome`, `improvement_pct`, `evidence`, `guardrails`) in the decision event.
+- Guardrails must not regress beyond their tolerance; a guardrail failure discards an otherwise improved candidate.
+- Prefer simplification when metrics are statistically tied and behavior is unchanged — the decision outcome is `simplification`.
+- Stop instead of continuing when state is corrupt, git state is unsafe, the benchmark is too noisy, the stop policy triggers, or the run budget is exhausted.

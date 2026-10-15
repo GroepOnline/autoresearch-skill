@@ -21,6 +21,7 @@ Autoresearch helps an agent test one hypothesis at a time, compare measured resu
 - Append-only JSONL state is the source of truth.
 - Benchmarks use median samples and noise checks instead of single-run timing.
 - Keep/discard decisions compare against the current best result.
+- v3 decision model: sample-aware permutation significance test, noise gate, guardrail metrics, and stop-policy integration with a full evidence trail.
 - Git operations are bounded and avoid destructive `reset --hard HEAD~` patterns.
 - Loops stop at explicit budgets, unsafe git state, corrupt state, noisy metrics, or repeated failed hypotheses.
 
@@ -90,7 +91,7 @@ Commands:
 |------|---------|
 | `autoresearch_state` | Read and validate JSONL state (config, runs, best, baseline) |
 | `autoresearch_metric` | Parse METRIC lines from benchmark output, compute median + noise CV |
-| `autoresearch_decide` | Policy-driven keep/discard/stop decision against current best |
+| `autoresearch_decide` | Sample-aware keep/discard/stop decision: permutation test, noise gate, guardrails, stop policy, and audit evidence |
 | `autoresearch_dashboard` | Generate markdown dashboard from JSONL |
 
 ### Stop Conditions
@@ -111,7 +112,9 @@ The loop automatically stops on:
 ### Key Features
 
 - **Experiment provenance** — Git commit hash auto-captured per metric measurement
-- **Noise-adaptive sampling** — CV (coefficient of variation) computed; warns when benchmark is too noisy
+- **Statistical decision model (v3)** — One-sided permutation test on repeated samples; keeps require significance (`p < alpha`) plus the minimum effect size
+- **Guardrails & simplification** — Secondary metrics cannot regress beyond tolerance; statistically tied results may be kept for simplification
+- **Noise-adaptive sampling** — CV (coefficient of variation) computed; warns when benchmark is too noisy and stops scoring above the floor
 - **Multi-metric tracking** — Secondary metrics shown in context as sub-rows
 - **Snapshot generation** — `AUTORESEARCH_STATE.json` written on every context injection
 - **Run duration tracking** — Per-run elapsed time shown in context
@@ -126,6 +129,9 @@ The loop automatically stops on:
 python3 scripts/autoresearch.py parse-metrics benchmark.out
 python3 scripts/autoresearch.py validate autoresearch.jsonl
 python3 scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
+python3 scripts/autoresearch.py decide --direction lower \
+  --samples 12.4 12.1 12.3 12.4 12.5 --best-samples 12.8 12.9 12.7 12.8 12.6
+python3 scripts/autoresearch.py stop-check autoresearch.jsonl --remaining-runs 0
 python3 scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```
 

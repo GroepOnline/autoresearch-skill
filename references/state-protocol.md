@@ -65,6 +65,20 @@ Required fields:
 - `reason`: short explanation
 - `timestamp`: ISO-8601 timestamp
 
+Optional audit fields written by the v3 decision model:
+
+- `policy_version`: decision-model version (currently `3`)
+- `outcome`: `conclusive`, `baseline`, `noisy`, `insufficient_samples`, `not_significant`, `below_threshold`, `guardrail_failed`, `simplification`, `invalid`, or `stopped`
+- `improvement_pct`: relative median improvement over the current best
+- `evidence`: sample statistics, noise CV, threshold, policy, and permutation-test result
+- `guardrails`: per-metric pass/fail with observed regression and tolerance
+
+Example:
+
+```json
+{"type":"decision","run":2,"action":"keep","reason":"improved 16.67% over current best (threshold 3.00%, p=0.0175)","timestamp":"2026-05-06T12:05:00Z","policy_version":3,"outcome":"conclusive","improvement_pct":16.67,"evidence":{"candidate":{"count":7,"median":100.0},"best":{"count":7,"median":120.0},"significance":{"p_value":0.0175,"significant":true}}}
+```
+
 ## Snapshot
 
 `AUTORESEARCH_STATE.json` is a generated cache with:

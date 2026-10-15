@@ -67,7 +67,7 @@ Regels:
 const AUTONOMOUS_BASE_PROMPT = `Start één bounded autoresearch run.
 Lees autoresearch.md en autoresearch.jsonl voor context.
 Run ./autoresearch.sh als benchmark en parse METRIC-regels.
-Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide tool voor keep/discard/stop.
+Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide met samples (en best_samples) voor een statistisch onderbouwde keep/discard/stop-beslissing.
 Leg de beslissing vast in autoresearch.jsonl.
 Stop als budget, safety, corrupt state, noisymetrics, of correctness failures van toepassing zijn.`;
 

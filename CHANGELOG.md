@@ -2,6 +2,25 @@
 
 All notable changes to the Autoresearch Skill project.
 
+## [Unreleased] — v3 decision model
+
+### Added
+
+- Sample-aware decision engine (`extensions/autoresearch/decision.ts`, mirrored in `scripts/autoresearch.py`):
+  - exact/Monte Carlo one-sided permutation test on the primary metric median difference;
+  - noise gate (CV vs `noise_floor_pct`), minimum-sample guard, and guardrail metrics;
+  - stop-policy integration (budget, consecutive discards, plateau) inside the decision;
+  - statistically tied simplification keeps (`outcome: simplification`);
+  - full evidence trail (`policy_version`, `outcome`, `improvement_pct`, `evidence`, `guardrails`) recorded on decision events.
+- Shared golden decision fixtures (`tests/fixtures/decision-cases.json`) validated by both Python and TypeScript tests.
+- `stop-check` subcommand and `--samples`/`--best-samples`/`--alpha`/`--min-samples`/`--guardrails-json`/`--history-json` flags in `scripts/autoresearch.py`.
+- `alpha`, `min_samples`, and `require_significance` config fields.
+
+### Changed
+
+- `autoresearch_decide` accepts `samples`, `best_samples`, `alpha`, `min_samples`, `guardrails`, `history`, and `simplification`; the single-value path keeps the legacy threshold behavior.
+- `references/benchmark-policy.md`, `references/state-protocol.md`, `README.md`, and the skill entrypoints now document the v3 statistical decision model.
+
 ## [0.3.0] — 2026-05-09
 
 ### Fixed - Critical Issues from Audit
