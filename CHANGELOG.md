@@ -4,6 +4,10 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.7.0] - 2026-11-03
+
+### Maintenance
+- bump zod (#21)
 ## [1.6.0] - 2026-09-25
 
 ### Maintenance
