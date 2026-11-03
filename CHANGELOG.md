@@ -4,6 +4,11 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.8.0] - 2026-11-03
+
+### Maintenance
+- override minimatch to ^11.0.1 (Dependabot) (#23)
+- bump brace-expansion (#22)
 ## [1.7.0] - 2026-11-03
 
 ### Maintenance
