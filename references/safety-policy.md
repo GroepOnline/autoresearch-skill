@@ -6,7 +6,7 @@ Autoresearch must be autonomous inside narrow boundaries, not unbounded or destr
 
 Stop immediately when any condition applies:
 
-- any dirty git working tree
+- dirty git state outside the autoresearch runtime workspace at start
 - state file corruption
 - missing or failing baseline
 - benchmark output has no parseable primary metric
@@ -19,8 +19,6 @@ Stop immediately when any condition applies:
 
 ## Git isolation
 
-Autoresearch requires a clean working tree before starting a loop.
-
 Avoid this pattern:
 
 ```bash
@@ -29,10 +27,12 @@ git reset --hard HEAD~
 
 Use safer options:
 
-- create a dedicated branch for the experiment session
+- create a dedicated branch for the experiment session (prefix `autoresearch/`)
 - use `git worktree` per candidate run when available
 - restrict restore/clean operations to allowlisted files and generated paths
 - record the base commit in state before changing files
+
+The extension start gate enforces this: starting on `main`/`master` or any non-isolated branch is blocked unless it can auto-switch to `autoresearch/<goal>`.
 
 Recommended discard pattern:
 
@@ -42,6 +42,10 @@ git clean -fd -- <allowlisted-generated-paths>
 ```
 
 ## Diff limits
+
+The extension checks direct write/edit tools before execution and audits the actual git diff after each agent turn. This post-run audit catches shell-driven mutations such as `python -c`, `sed -i`, `cat > file`, or other bash commands that change files outside the declared scope.
+
+Tool calls blocked by the pre-execution check are appended to `.autoresearch-audit.jsonl` in the working directory as redacted `security_block` entries (timestamp, tool name, reason, redacted path/command preview). The log never stores file contents or credential-shaped values.
 
 Defaults:
 
@@ -53,4 +57,4 @@ Defaults:
 
 ## Pause sentinel
 
-When `.autoresearch-off` exists, finish the current safe checkpoint and stop before starting the next run.
+When `.autoresearch/.autoresearch-off` exists, finish the current safe checkpoint and stop before starting the next run.

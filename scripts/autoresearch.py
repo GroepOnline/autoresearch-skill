@@ -583,8 +583,8 @@ def decide_with_samples(
         stop = evaluate_stop_policy(
             consecutive_discards=int(history.get("consecutive_discards", 0) or 0),
             runs_since_improvement=int(history.get("runs_since_improvement", 0) or 0),
-            max_consecutive_discards=int(history.get("max_consecutive_discards", 5) or 5),
-            max_runs_without_improvement=int(history.get("max_runs_without_improvement", 10) or 10),
+            max_consecutive_discards=int(history["max_consecutive_discards"]) if history.get("max_consecutive_discards") is not None else 5,
+            max_runs_without_improvement=int(history["max_runs_without_improvement"]) if history.get("max_runs_without_improvement") is not None else 10,
             remaining_runs=history.get("remaining_runs"),
             remaining_minutes=history.get("remaining_minutes"),
         )
@@ -675,6 +675,23 @@ def decide_with_samples(
         and simplification.get("removes_complexity") is True
         and simplification.get("behavior_unchanged") is True
     ):
+        # Only a statistically tied candidate may be kept for simplification;
+        # test the reverse direction so a significantly worse candidate still
+        # discards.
+        worse = permutation_test_median(
+            candidate_samples,
+            best_samples,
+            direction="higher" if direction == "lower" else "lower",
+            alpha=alpha,
+        ).significant
+        if worse:
+            return Decision(
+                "discard",
+                f"simplification candidate is significantly worse (reverse p < {alpha})",
+                improvement,
+                outcome="below_threshold",
+                evidence=evidence,
+            )
         return Decision(
             "keep",
             "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
@@ -849,6 +866,7 @@ def cmd_decide(args: argparse.Namespace) -> int:
             alpha=args.alpha,
             min_samples=args.min_samples,
             tests_passed=not args.tests_failed,
+            require_significance=args.require_significance,
             guardrails=guardrails,
             history=history,
         )
@@ -916,6 +934,8 @@ def build_parser() -> argparse.ArgumentParser:
     decide_parser.add_argument("--best-samples", type=float, nargs="*", help="repeated best samples for a significance test")
     decide_parser.add_argument("--alpha", type=float, default=0.05, help="significance level for the permutation test")
     decide_parser.add_argument("--min-samples", type=int, default=3, help="minimum samples per side to score")
+    decide_parser.add_argument("--no-significance", dest="require_significance", action="store_false",
+                               help="skip the significance requirement (threshold-only keep)")
     decide_parser.add_argument("--guardrails-json", help="JSON array of guardrail objects (name, direction, tolerance_pct, candidate, best)")
     decide_parser.add_argument("--history-json", help="JSON object with consecutive_discards / runs_since_improvement / remaining budgets")
     decide_parser.add_argument("--min-effect-size-pct", type=float, default=3.0)

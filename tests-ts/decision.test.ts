@@ -118,9 +118,13 @@ test("decideWithSamples attaches evidence and rejects noise", () => {
   assert.equal(noisy.outcome, "noisy");
 });
 
-test("decideValue keeps the legacy threshold-only behavior", () => {
+test("decideValue keeps at the threshold boundary like decideWithSamples", () => {
   assert.equal(decideValue({ candidate: 90, best: 100, direction: "lower" }).action, "keep");
-  assert.equal(decideValue({ candidate: 97, best: 100, direction: "lower" }).action, "discard");
+  // improvement exactly at the threshold is a keep, matching
+  // decideWithSamples and benchmark-policy.md (improvement_pct >= threshold);
+  // 12.5% of 80 is binary-exact so both sides compare identically.
+  assert.equal(decideValue({ candidate: 70, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "keep");
+  assert.equal(decideValue({ candidate: 70.01, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "discard");
   assert.equal(decideValue({ candidate: 100, direction: "lower" }).action, "baseline");
   assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", testsPassed: false }).action, "discard");
   assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", noisy: true }).action, "stop");

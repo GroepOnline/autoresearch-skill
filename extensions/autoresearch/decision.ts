@@ -241,10 +241,10 @@ export function evaluateStopPolicy(history: DecisionHistory): StopCondition {
   const maxConsecutiveDiscards = history.max_consecutive_discards ?? 5;
   const maxRunsWithoutImprovement = history.max_runs_without_improvement ?? 10;
 
-  if (history.remaining_runs !== undefined && history.remaining_runs <= 0) {
+  if (typeof history.remaining_runs === "number" && Number.isFinite(history.remaining_runs) && history.remaining_runs <= 0) {
     return { stopped: true, reason: "run budget exhausted" };
   }
-  if (history.remaining_minutes !== undefined && history.remaining_minutes <= 0) {
+  if (typeof history.remaining_minutes === "number" && Number.isFinite(history.remaining_minutes) && history.remaining_minutes <= 0) {
     return { stopped: true, reason: "time budget exhausted" };
   }
   if (maxConsecutiveDiscards > 0 && consecutiveDiscards >= maxConsecutiveDiscards) {
@@ -451,6 +451,21 @@ export function decideWithSamples(params: {
     };
   }
   if (!significance.significant && simplification?.removes_complexity === true && simplification.behavior_unchanged === true) {
+    // A simplification may only keep a statistically tied candidate. A
+    // significantly worse candidate must not survive via the simplification
+    // branch, so test the reverse direction before keeping.
+    const reverseDirection = direction === "lower" ? "higher" : "lower";
+    const worse = permutationTestMedian(candidateSamples, bestSamples, reverseDirection, alpha).significant;
+    if (worse) {
+      return {
+        action: "discard",
+        reason: `simplification candidate is significantly worse (reverse p < ${alpha})`,
+        improvementPct: improvement,
+        policyVersion: POLICY_VERSION,
+        outcome: "below_threshold",
+        evidence,
+      };
+    }
     return {
       action: "keep",
       reason: "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
@@ -483,10 +498,23 @@ export function decideWithSamples(params: {
     };
   }
 
+  if (improvement === null) {
+    // Unreachable in practice: a null improvement only occurs when the best
+    // median is zero, which returns earlier. Fail closed if that ever breaks.
+    return {
+      action: "discard",
+      reason: "no improvement metric could be computed",
+      improvementPct: null,
+      policyVersion: POLICY_VERSION,
+      outcome: "invalid",
+      evidence,
+    };
+  }
+
   if (requireSignificance && !significance.significant) {
     return {
       action: "discard",
-      reason: `improvement ${improvement!.toFixed(2)}% is not statistically significant (p=${significance.pValue.toFixed(4)} >= alpha=${alpha})`,
+      reason: `improvement ${improvement.toFixed(2)}% is not statistically significant (p=${significance.pValue.toFixed(4)} >= alpha=${alpha})`,
       improvementPct: improvement,
       policyVersion: POLICY_VERSION,
       outcome: "not_significant",
@@ -494,10 +522,10 @@ export function decideWithSamples(params: {
     };
   }
 
-  if (improvement! >= threshold) {
+  if (improvement >= threshold) {
     return {
       action: "keep",
-      reason: `improved ${improvement!.toFixed(2)}% over current best (threshold ${threshold.toFixed(2)}%, p=${significance.pValue.toFixed(4)})`,
+      reason: `improved ${improvement.toFixed(2)}% over current best (threshold ${threshold.toFixed(2)}%, p=${significance.pValue.toFixed(4)})`,
       improvementPct: improvement,
       policyVersion: POLICY_VERSION,
       outcome: "conclusive",
@@ -507,7 +535,7 @@ export function decideWithSamples(params: {
 
   return {
     action: "discard",
-    reason: `improvement ${improvement!.toFixed(2)}% is below threshold ${threshold.toFixed(2)}%`,
+    reason: `improvement ${improvement.toFixed(2)}% is below threshold ${threshold.toFixed(2)}%`,
     improvementPct: improvement,
     policyVersion: POLICY_VERSION,
     outcome: "below_threshold",
@@ -564,14 +592,13 @@ export function decideValue(params: {
     };
   }
 
-  const factor = 1 - threshold / 100;
-  const thresholdValue = direction === "lower" ? best * factor : best * (1 + threshold / 100);
-  const improved = direction === "lower" ? candidate < thresholdValue : candidate > thresholdValue;
   const improvementPct = direction === "lower"
     ? ((best - candidate) / Math.abs(best)) * 100
     : ((candidate - best) / Math.abs(best)) * 100;
 
-  if (improved) {
+  // Shared rule with decideWithSamples and benchmark-policy.md: keep at a
+  // threshold tie (improvement_pct >= max(min_effect_size_pct, noise_floor_pct)).
+  if (improvementPct >= threshold) {
     const text = `improved ${improvementPct.toFixed(2)}% over current best (threshold ${threshold.toFixed(2)}%)`;
     return { action: "keep", reason: text, improvementPct, policyVersion: POLICY_VERSION, outcome: "conclusive" };
   }

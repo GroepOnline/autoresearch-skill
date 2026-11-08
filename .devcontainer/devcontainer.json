@@ -1,7 +1,13 @@
 {
   "name": "autoresearch-skill environment",
-  "image": "mcr.microsoft.com/devcontainers/typescript-node:22",
+  "image": "mcr.microsoft.com/devcontainers/base:oraclelinux-9",
   "features": {
+    "ghcr.io/devcontainers/features/node:1": {
+      "version": "22"
+    },
+    "ghcr.io/devcontainers/features/python:1": {
+      "version": "3.14"
+    },
     "ghcr.io/devcontainers/features/github-cli:1": {},
     "ghcr.io/devcontainers/features/common-utils:2": {}
   },
@@ -10,13 +16,26 @@
       "extensions": [
         "GitHub.copilot",
         "GitHub.vscode-pull-request-github",
-        "EditorConfig.EditorConfig"
-      ]
+        "EditorConfig.EditorConfig",
+        "ms-python.python",
+        "ms-python.debugpy",
+        "charliermarsh.ruff"
+      ],
+      "settings": {
+        "python.defaultInterpreterPath": "/usr/local/bin/python3",
+        "terminal.integrated.env.linux": {
+          "NODE_OPTIONS": "--max-old-space-size=8192"
+        }
+      }
     }
   },
-  "postCreateCommand": "bash scripts/bootstrap-env.sh",
+  "forwardPorts": [8081],
+  "postCreateCommand": "bash scripts/bootstrap-env.sh && npm ci",
   "remoteEnv": {
     "DRY_RUN": "true",
-    "COMPUTER_USE_ENABLED": "false"
+    "COMPUTER_USE_ENABLED": "false",
+    "LLAMA_HOST": "bc-scan-arm",
+    "LLAMA_PORT": "8081",
+    "NODE_OPTIONS": "--max-old-space-size=8192"
   }
 }

@@ -1,6 +1,6 @@
 {
   "name": "@groeponline/pi-autoresearch",
-  "version": "2.0.0",
+  "version": "1.8.0",
   "description": "Pi extension and Agent Skill for bounded, benchmark-driven autoresearch loops in code repositories.",
   "type": "module",
   "license": "MIT",
@@ -34,39 +34,65 @@
     "extension.ts",
     "extensions/",
     "skills/",
+    "agents/",
     "references/",
-    "scripts/",
+    "docs/",
+    "scripts/*.py",
+    "scripts/*.mjs",
+    "scripts/*.sh",
     "types/",
     "LICENSE",
     "CHANGELOG.md",
-    "README.md",
-    "SKILL.md"
+    "README.md"
   ],
   "pi": {
     "extensions": [
       "./extensions/autoresearch/index.ts"
     ],
     "skills": [
-      "./skills/pi-autoresearch"
+      "./skills"
     ]
   },
   "scripts": {
     "typecheck": "tsc --noEmit",
-    "test": "python3 -m unittest discover -s tests -p 'test_*.py'",
-    "test:ts": "tsx --test tests-ts/*.test.ts",
-    "validate": "npm test && npm run test:ts && npm run typecheck"
+    "test": "node scripts/run-python-tests.mjs",
+    "test:ts": "node scripts/run-ts-tests.mjs",
+    "test:e2e": "bash scripts/e2e-automated-test.sh",
+    "test:e2e:pi": "bash scripts/autoresearch-e2e-test.sh",
+    "validate": "node scripts/validate.mjs",
+    "benchmark": "node scripts/benchmark-code-quality.mjs",
+    "benchmark:comparison": "node scripts/benchmark-comparison.mjs",
+    "lint": "eslint extensions/**/*.ts --max-warnings 0",
+    "lint:fix": "eslint extensions/**/*.ts --fix",
+    "format": "prettier --write \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
+    "format:check": "prettier --check \"extensions/**/*.ts\" \"tests-ts/**/*.ts\"",
+    "package": "node scripts/package-clean.mjs",
+    "package:clean": "node scripts/package-clean.mjs",
+    "release": "node scripts/release.mjs"
   },
   "devDependencies": {
+    "@eslint/js": "^10.0.1",
     "@types/node": "^22.10.0",
-    "tsx": "^4.20.6",
+    "@typescript-eslint/eslint-plugin": "^8.59.2",
+    "@typescript-eslint/parser": "^8.59.2",
+    "eslint": "^10.3.0",
+    "eslint-config-prettier": "^10.1.8",
+    "prettier": "^3.8.3",
+    "tsx": "^4.23.13",
     "typescript": "^5.7.0"
   },
   "peerDependencies": {
-    "@mariozechner/pi-coding-agent": "^0.74.0"
+    "@earendil-works/pi-coding-agent": "*"
   },
   "peerDependenciesMeta": {
-    "@mariozechner/pi-coding-agent": {
+    "@earendil-works/pi-coding-agent": {
       "optional": true
     }
+  },
+  "dependencies": {
+    "zod": "^4.6.6"
+  },
+  "overrides": {
+    "minimatch": "^11.0.1"
   }
 }

@@ -1,86 +1,91 @@
 import assert from "node:assert/strict";
-import { existsSync, mkdtempSync, readFileSync, writeFileSync } from "node:fs";
+import { mkdirSync, mkdtempSync, writeFileSync, existsSync, readFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
-import { registerAutoresearchCommand } from "../extensions/autoresearch/commands.js";
+import { paths, readState } from "../extensions/autoresearch/state.js";
 
 function tempProject(): string {
-  return mkdtempSync(join(tmpdir(), "pi-autoresearch-commands-test-"));
+  const cwd = mkdtempSync(join(tmpdir(), "pi-autoresearch-test-"));
+  mkdirSync(paths(cwd).dir, { recursive: true });
+  return cwd;
 }
 
-function writePrereqs(cwd: string): void {
-  writeFileSync(join(cwd, "autoresearch.md"), "# Autoresearch\n\n## Files in Scope\n- src/app.ts\n\n## Off Limits\n- .env\n", "utf-8");
-  writeFileSync(join(cwd, "autoresearch.sh"), "#!/usr/bin/env bash\necho ok\n", { mode: 0o755 });
-}
-
-test("start command uses config thresholds in loop state", async () => {
+test("archiveArtifacts creates timestamped archive", async () => {
   const cwd = tempProject();
-  writePrereqs(cwd);
-  writeFileSync(join(cwd, "autoresearch.jsonl"), [
-    JSON.stringify({
-      type: "config",
-      schema_version: 1,
-      name: "thresholds",
-      metric: "latency_ms",
-      direction: "lower",
-      created_at: "2026-05-09T00:00:00Z",
-      max_consecutive_discards: 4,
-      max_runs_without_improvement: 8,
-      max_diff_lines_assisted: 33,
-      max_diff_lines_ralph: 7,
-    }),
-  ].join("\n") + "\n", "utf-8");
+  const p = paths(cwd);
 
-  let storedLoop: any = null;
-  let sentMessage: string | null = null;
-  let registered: any = null;
+  mkdirSync(p.dir, { recursive: true });
+  writeFileSync(p.jsonl, '{"type":"config"}\n');
+  writeFileSync(p.context, "# Test\n");
 
-  const pi: any = {
-    registerCommand(_name: string, spec: any) {
-      registered = spec;
-    },
-    appendEntry(_type: string, data: unknown) {
-      storedLoop = data;
-    },
-    sendUserMessage(message: string) {
-      sentMessage = message;
-    },
-  };
+  const { archiveArtifacts } = await import("../extensions/autoresearch/commands.js");
 
-  registerAutoresearchCommand(pi, loop => {
-    storedLoop = loop;
-  });
+  const archivePath = archiveArtifacts(cwd, p.dir);
 
-  await registered.handler("start 2 3", {
-    cwd,
-    ui: {
-      notify() {},
-      confirm: async () => true,
-      setStatus() {},
-      setWidget() {},
-    },
-  });
+  // Verify archive was created
+  assert.ok(existsSync(archivePath));
+  assert.ok(existsSync(join(archivePath, "autoresearch.jsonl")));
+  assert.ok(existsSync(join(archivePath, "autoresearch.md")));
 
-  assert.equal(storedLoop.mode, "assisted");
-  assert.equal(storedLoop.maxRuns, 2);
-  assert.equal(storedLoop.maxMinutes, 3);
-  assert.equal(storedLoop.maxConsecutiveDiscards, 4);
-  assert.equal(storedLoop.maxRunsWithoutImprovement, 8);
-  assert.equal(storedLoop.maxDiffLines, 33);
-  assert.equal(typeof sentMessage, "string");
-  const message = sentMessage ?? "";
-  assert.ok(message.includes("bounded autoresearch run"));
+  // Verify original files are gone
+  assert.ok(!existsSync(p.jsonl));
+  assert.ok(!existsSync(p.context));
 });
 
-test("package metadata points to existing skill directories", () => {
-  const packageJson = JSON.parse(readFileSync("package.json", "utf-8")) as {
-    version: string;
-    pi: { skills: string[] };
-  };
+test("archiveArtifacts creates timestamped archive with correct format", async () => {
+  const cwd = tempProject();
+  const p = paths(cwd);
 
-  assert.equal(packageJson.version, "2.0.0");
-  assert.deepEqual(packageJson.pi.skills, ["./skills/pi-autoresearch"]);
-  assert.equal(existsSync(join(process.cwd(), "skills", "pi-autoresearch", "SKILL.md")), true);
-  assert.equal(existsSync(join(process.cwd(), "skills", "autoresearch", "SKILL.md")), true);
+  mkdirSync(p.dir, { recursive: true });
+  writeFileSync(p.jsonl, '{"type":"config"}\n');
+  writeFileSync(p.context, "# Test\n");
+
+  const { archiveArtifacts } = await import("../extensions/autoresearch/commands.js");
+
+  const archivePath = archiveArtifacts(cwd, p.dir);
+
+  // Archive path should be in experiments/archive/ with timestamp (colons replaced with dashes)
+  assert.match(
+    archivePath.replaceAll("\\", "/"),
+    /experiments\/archive\/\d{4}-\d{2}-\d{2}T\d{2}-\d{2}-\d{2}/
+  );
+
+  // Verify content is preserved
+  const archivedJsonl = readFileSync(join(archivePath, "autoresearch.jsonl"), "utf-8");
+  assert.equal(archivedJsonl, '{"type":"config"}\n');
+
+  const archivedContext = readFileSync(join(archivePath, "autoresearch.md"), "utf-8");
+  assert.equal(archivedContext, "# Test\n");
+});
+
+test("archiveArtifacts moves all artifact files", async () => {
+  const cwd = tempProject();
+  const p = paths(cwd);
+
+  mkdirSync(p.dir, { recursive: true });
+  writeFileSync(p.jsonl, '{"type":"config"}\n');
+  writeFileSync(p.context, "# Test\n");
+  writeFileSync(p.benchmark, "#!/bin/bash\necho test\n");
+  writeFileSync(p.worklog, "# Worklog\n");
+  writeFileSync(p.dashboard, "# Dashboard\n");
+  writeFileSync(p.ideas, "# Ideas\n");
+  writeFileSync(p.sentinel, "paused\n");
+
+  const { archiveArtifacts } = await import("../extensions/autoresearch/commands.js");
+
+  const archivePath = archiveArtifacts(cwd, p.dir);
+
+  // All files should be moved
+  assert.ok(existsSync(join(archivePath, "autoresearch.jsonl")));
+  assert.ok(existsSync(join(archivePath, "autoresearch.md")));
+  assert.ok(existsSync(join(archivePath, "autoresearch.sh")));
+  assert.ok(existsSync(join(archivePath, "worklog.md")));
+  assert.ok(existsSync(join(archivePath, "autoresearch-dashboard.md")));
+  assert.ok(existsSync(join(archivePath, "autoresearch.ideas.md")));
+  assert.ok(existsSync(join(archivePath, ".autoresearch-off")));
+
+  // Original directory should be empty (or removed)
+  assert.ok(!existsSync(p.jsonl));
+  assert.ok(!existsSync(p.context));
 });

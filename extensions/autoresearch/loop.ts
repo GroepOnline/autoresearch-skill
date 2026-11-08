@@ -13,7 +13,6 @@ export interface LoopState {
   consecutiveDiscards: number;
   maxRunsWithoutImprovement: number;
   runsSinceLastImprovement: number;
-  maxDiffLines: number;
   lastRunTs?: number;
   lastRunDurationMs?: number;
   trackedRuns: number;
@@ -29,7 +28,63 @@ export interface LoopContinuation {
   remainingMinutes: number;
 }
 
-export function evaluateContinuation(state: ArState, loop: LoopState, nowMs: number): LoopContinuation {
+function deriveDecisionProgress(state: ArState): {
+  consecutiveDiscards: number;
+  runsSinceLastImprovement: number;
+} {
+  let consecutiveDiscards = 0;
+  for (let i = state.decisions.length - 1; i >= 0; i--) {
+    if (state.decisions[i].action === "discard") consecutiveDiscards++;
+    else break;
+  }
+
+  let runsSinceLastImprovement = 0;
+  for (let i = state.decisions.length - 1; i >= 0; i--) {
+    const action = state.decisions[i].action;
+    if (action === "keep" || action === "baseline") break;
+    runsSinceLastImprovement++;
+  }
+
+  return { consecutiveDiscards, runsSinceLastImprovement };
+}
+
+/** Restore derived loop counters from persisted JSONL without inventing a new run. */
+export function restoreLoopProgress(loop: LoopState, state: ArState): void {
+  const progress = deriveDecisionProgress(state);
+  loop.consecutiveDiscards = progress.consecutiveDiscards;
+  loop.runsSinceLastImprovement = progress.runsSinceLastImprovement;
+  loop.trackedRuns = Math.max(0, state.runCount - loop.runsAtStart);
+}
+
+/**
+ * Record progress only when JSONL contains a newly completed run.
+ *
+ * agent_end can fire more than once for the same experiment. Re-applying the
+ * last decision on every turn would inflate discard/plateau counters and stop
+ * Ralph early, so this update is intentionally idempotent for an unchanged
+ * run count.
+ */
+export function recordLoopProgress(loop: LoopState, state: ArState, nowMs: number): boolean {
+  const observedRuns = Math.max(0, state.runCount - loop.runsAtStart);
+  if (observedRuns <= loop.trackedRuns) return false;
+
+  if (loop.lastRunTs !== undefined) {
+    loop.lastRunDurationMs = Math.max(0, nowMs - loop.lastRunTs);
+  }
+  loop.lastRunTs = nowMs;
+
+  const progress = deriveDecisionProgress(state);
+  loop.consecutiveDiscards = progress.consecutiveDiscards;
+  loop.runsSinceLastImprovement = progress.runsSinceLastImprovement;
+  loop.trackedRuns = observedRuns;
+  return true;
+}
+
+export function evaluateContinuation(
+  state: ArState,
+  loop: LoopState,
+  nowMs: number
+): LoopContinuation {
   const runsUsed = state.runCount - loop.runsAtStart;
   const elapsedMs = nowMs - loop.startedAt;
   const elapsedMinutes = elapsedMs / 60_000;
@@ -39,16 +94,43 @@ export function evaluateContinuation(state: ArState, loop: LoopState, nowMs: num
 
   const base = { runNumber, runsUsed, remainingRuns, elapsedMinutes, remainingMinutes };
 
-  if (state.isPaused) return { shouldContinue: false, stopReason: "paused — /autoresearch resume to continue", ...base };
-  if (state.parseErrors.length > 0) return { shouldContinue: false, stopReason: "JSONL parse errors", ...base };
+  if (state.isPaused)
+    return {
+      shouldContinue: false,
+      stopReason: "paused — /autoresearch resume to continue",
+      ...base,
+    };
+  if (state.parseErrors.length > 0)
+    return { shouldContinue: false, stopReason: "JSONL parse errors", ...base };
   if (!state.config) return { shouldContinue: false, stopReason: "no config found", ...base };
-  if (runsUsed >= loop.maxRuns) return { shouldContinue: false, stopReason: `run budget exhausted (${loop.maxRuns} runs)`, ...base };
-  if (elapsedMinutes >= loop.maxMinutes) return { shouldContinue: false, stopReason: `time budget exhausted (${loop.maxMinutes} min)`, ...base };
+  if (runsUsed >= loop.maxRuns)
+    return {
+      shouldContinue: false,
+      stopReason: `run budget exhausted (${loop.maxRuns} runs)`,
+      ...base,
+    };
+  if (elapsedMinutes >= loop.maxMinutes)
+    return {
+      shouldContinue: false,
+      stopReason: `time budget exhausted (${loop.maxMinutes} min)`,
+      ...base,
+    };
 
   const lastDecision = state.decisions.at(-1);
-  if (lastDecision?.action === "stop") return { shouldContinue: false, stopReason: `stop decision: ${lastDecision.reason}`, ...base };
-  if (loop.consecutiveDiscards >= loop.maxConsecutiveDiscards) return { shouldContinue: false, stopReason: `${loop.consecutiveDiscards} consecutive discards (limit ${loop.maxConsecutiveDiscards})`, ...base };
-  if (loop.runsSinceLastImprovement >= loop.maxRunsWithoutImprovement) return { shouldContinue: false, stopReason: `plateau — ${loop.runsSinceLastImprovement} runs zonder verbetering (limit ${loop.maxRunsWithoutImprovement})`, ...base };
+  if (lastDecision?.action === "stop")
+    return { shouldContinue: false, stopReason: `stop decision: ${lastDecision.reason}`, ...base };
+  if (loop.consecutiveDiscards >= loop.maxConsecutiveDiscards)
+    return {
+      shouldContinue: false,
+      stopReason: `${loop.consecutiveDiscards} consecutive discards (limit ${loop.maxConsecutiveDiscards})`,
+      ...base,
+    };
+  if (loop.runsSinceLastImprovement >= loop.maxRunsWithoutImprovement)
+    return {
+      shouldContinue: false,
+      stopReason: `plateau — ${loop.runsSinceLastImprovement} runs zonder verbetering (limit ${loop.maxRunsWithoutImprovement})`,
+      ...base,
+    };
 
   return { shouldContinue: true, ...base };
 }
@@ -60,18 +142,22 @@ Regels:
 - GEEN slimme rewrites. GEEN architectuur-veranderingen.
 - De diff mag maximaal ~10 gewijzigde regels zijn, tenzij de scope dit uitdrukkelijk toestaat.
 - Geen nieuwe dependencies, geen config-wijzigingen, geen lockfile-wijzigingen.
-- Run ./autoresearch.sh, verifieer dat tests slagen, vergelijk mediaan met huidige best.
+- Run ./.autoresearch/autoresearch.sh, verifieer dat tests slagen, vergelijk mediaan met huidige best.
 - Als de verbetering < min_effect_size_pct: meteen discard, ga door.
 - Doe geen tweede hypothese in dezelfde run.`;
 
 const AUTONOMOUS_BASE_PROMPT = `Start één bounded autoresearch run.
-Lees autoresearch.md en autoresearch.jsonl voor context.
-Run ./autoresearch.sh als benchmark en parse METRIC-regels.
-Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide met samples (en best_samples) voor een statistisch onderbouwde keep/discard/stop-beslissing.
-Leg de beslissing vast in autoresearch.jsonl.
-Stop als budget, safety, corrupt state, noisymetrics, of correctness failures van toepassing zijn.`;
+Lees .autoresearch/autoresearch.md en .autoresearch/autoresearch.jsonl voor context.
+Run ./.autoresearch/autoresearch.sh als benchmark en parse METRIC-regels.
+Test één hypothese, vergelijk mediaan met de huidige best, gebruik autoresearch_decide tool voor keep/discard/stop.
+Leg de beslissing vast in .autoresearch/autoresearch.jsonl.
+Stop als budget, safety, corrupt state, noisy metrics, of correctness failures van toepassing zijn.`;
 
-export function buildContinuationMessage(loop: LoopState, cont: LoopContinuation, state: ArState): string {
+export function buildContinuationMessage(
+  loop: LoopState,
+  cont: LoopContinuation,
+  state: ArState
+): string {
   const config = state.config;
   let header = loop.mode === "ralph" ? `${RALPH_STRATEGY_PROMPT}\n\n` : "";
 
@@ -84,10 +170,17 @@ export function buildContinuationMessage(loop: LoopState, cont: LoopContinuation
   }
 
   // ── Recently tried deduplication hint ───────────────────────────────────
-  const recentDescriptions = [...new Set(state.results.slice(-5).map(r => r.description).filter(Boolean))];
+  const recentDescriptions = [
+    ...new Set(
+      state.results
+        .slice(-5)
+        .map((r) => r.description)
+        .filter(Boolean)
+    ),
+  ];
   if (recentDescriptions.length > 0) {
     context += `\n\nLaatste pogingen (herhaal deze NIET):\n`;
-    context += recentDescriptions.map(d => `- ${d}`).join("\n");
+    context += recentDescriptions.map((d) => `- ${d}`).join("\n");
   }
 
   return `${header}${context}`;
@@ -103,9 +196,15 @@ export function summarizeLoopStop(loop: LoopState, cont: LoopContinuation, state
   if (config) {
     const dir = direction(config);
     lines.push(`Metric: ${metricName(config)} (${dir})`);
-    if (state.baselineMetric !== null) lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
-    if (state.bestMetric !== null && state.bestRun !== null) lines.push(`Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`);
+    if (state.baselineMetric !== null)
+      lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
+    if (state.bestMetric !== null && state.bestRun !== null)
+      lines.push(
+        `Best: ${fmt(state.bestMetric, metricUnit(config))} (#${state.bestRun}) ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+      );
   }
-  lines.push(`Beslissingen: ✅ ${state.keptCount} keep | ❌ ${state.discardedCount} discard | 💥 ${state.crashedCount} crash`);
+  lines.push(
+    `Beslissingen: ✅ ${state.keptCount} keep | ❌ ${state.discardedCount} discard | 💥 ${state.crashedCount} crash`
+  );
   return lines.join("\n");
 }
