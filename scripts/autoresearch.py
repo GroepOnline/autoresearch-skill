@@ -7,14 +7,12 @@ import argparse
 import itertools
 import json
 import math
-import random
 import re
 import statistics
 import sys
-import zlib
 from dataclasses import dataclass
 from pathlib import Path
-from typing import Any, Iterable, Literal, Mapping, Sequence
+from typing import Any, Callable, Iterable, Literal, Mapping, Sequence
 
 Direction = Literal["lower", "higher"]
 Action = Literal["baseline", "keep", "discard", "stop"]
@@ -310,21 +308,36 @@ def decide(
     noise_floor_pct: float = 0.0,
     tests_passed: bool = True,
     noisy: bool = False,
+    guardrails: Sequence[Mapping[str, Any]] = (),
 ) -> Decision:
     """Return a bounded keep/discard/stop decision for a single value pair.
 
     This is the threshold-only compatibility path. When repeated samples are
     available, prefer :func:`decide_with_samples`, which adds a permutation
-    significance test, a noise gate, guardrails, and stop-policy integration.
+    significance test, a noise gate, and stop-policy integration. Guardrails
+    are honored here as well — a scalar keep may not violate a supplied
+    secondary metric.
     """
     if direction not in ("lower", "higher"):
         raise ValueError("direction must be 'lower' or 'higher'")
+    if not 0 <= min_effect_size_pct <= 100:
+        raise ValueError("min_effect_size_pct must be in [0, 100]")
+    if not 0 <= noise_floor_pct <= 100:
+        raise ValueError("noise_floor_pct must be in [0, 100]")
     if not math.isfinite(candidate):
         return Decision("discard", "candidate metric is not finite", outcome="invalid")
     if not tests_passed:
         return Decision("discard", "correctness checks failed", outcome="invalid")
     if noisy:
         return Decision("stop", "benchmark noise exceeds configured floor", outcome="noisy")
+    guardrail_results, guardrail_failures = _evaluate_guardrails(guardrails)
+    if guardrail_failures:
+        return Decision(
+            "discard",
+            "guardrail regression: " + "; ".join(guardrail_failures),
+            outcome="guardrail_failed",
+            guardrails=tuple(guardrail_results),
+        )
     if best is None:
         return Decision("baseline", "first valid measurement becomes baseline", 0.0, outcome="baseline")
     if not math.isfinite(best):
@@ -338,16 +351,24 @@ def decide(
             "zero best value requires strict absolute improvement",
             None,
             outcome="conclusive" if improved else "below_threshold",
+            guardrails=tuple(guardrail_results),
         )
 
     improvement = ((best - candidate) / abs(best) * 100.0) if direction == "lower" else ((candidate - best) / abs(best) * 100.0)
     if improvement >= threshold:
-        return Decision("keep", f"improved {improvement:.2f}% over current best (threshold {threshold:.2f}%)", improvement, outcome="conclusive")
+        return Decision(
+            "keep",
+            f"improved {improvement:.2f}% over current best (threshold {threshold:.2f}%)",
+            improvement,
+            outcome="conclusive",
+            guardrails=tuple(guardrail_results),
+        )
     return Decision(
         "discard",
         f"improvement {improvement:.2f}% is below threshold {threshold:.2f}% or worse than best",
         improvement,
         outcome="below_threshold",
+        guardrails=tuple(guardrail_results),
     )
 
 
@@ -362,7 +383,17 @@ def compute_stats(values: Iterable[float]) -> SampleStats:
     count = len(samples)
     mean = float(statistics.fmean(samples))
     stdev = float(statistics.stdev(samples)) if count >= 2 else 0.0
-    cv_pct = (stdev / abs(mean) * 100.0) if count >= 2 and mean != 0 else 0.0
+    # A zero mean with nonzero spread is the noisiest case, not a clean one:
+    # report an unbounded CV so the noise gate can never pass it.
+    if count >= 2:
+        if mean != 0:
+            cv_pct = stdev / abs(mean) * 100.0
+        elif stdev > 0:
+            cv_pct = math.inf
+        else:
+            cv_pct = 0.0
+    else:
+        cv_pct = 0.0
     return SampleStats(
         count=count,
         median=float(statistics.median(samples)),
@@ -374,13 +405,51 @@ def compute_stats(values: Iterable[float]) -> SampleStats:
     )
 
 
-def _oriented_median_diff(candidate: Sequence[float], best: Sequence[float], direction: Direction) -> float:
-    """Positive values mean the candidate is better than the best."""
-    diff = float(statistics.median(candidate)) - float(statistics.median(best))
+def _oriented_mean_diff(candidate: Sequence[float], best: Sequence[float], direction: Direction) -> float:
+    """Positive values mean the candidate is better than the best.
+
+    The permutation statistic uses the mean difference, not the median: with
+    repeated (constant) samples the median difference is insensitive to any
+    minority of relabelings, so a clear improvement scored p=0.5. The mean
+    retains group separation under every relabeling; medians still drive the
+    reported effect size.
+    """
+    diff = float(statistics.fmean(candidate)) - float(statistics.fmean(best))
     return diff if direction == "higher" else -diff
 
 
-def permutation_test_median(
+def _fnv1a32(data: bytes) -> int:
+    """FNV-1a 32-bit hash — identical to the TypeScript hashString over ASCII."""
+    value = 2166136261
+    for byte in data:
+        value ^= byte
+        value = (value * 16777619) & 0xFFFFFFFF
+    return value
+
+
+def _mulberry32(seed: int) -> Callable[[], float]:
+    """mulberry32 PRNG — bit-identical to the TypeScript implementation."""
+    state = seed & 0xFFFFFFFF
+
+    def rand() -> float:
+        nonlocal state
+        state = (state + 0x6D2B79F5) & 0xFFFFFFFF
+        t = state
+        t = ((t ^ (t >> 15)) * (t | 1)) & 0xFFFFFFFF
+        t ^= (t + (((t ^ (t >> 7)) * (t | 61)) & 0xFFFFFFFF)) & 0xFFFFFFFF
+        return ((t ^ (t >> 14)) & 0xFFFFFFFF) / 4294967296
+
+    return rand
+
+
+def _shuffle(values: list[float], rand: Callable[[], float]) -> None:
+    """Fisher-Yates shuffle matching the TypeScript draw order exactly."""
+    for index in range(len(values) - 1, 0, -1):
+        swap = int(rand() * (index + 1))
+        values[index], values[swap] = values[swap], values[index]
+
+
+def permutation_test_mean(
     candidate: Sequence[float],
     best: Sequence[float],
     *,
@@ -389,12 +458,14 @@ def permutation_test_median(
     exact_limit: int = _EXACT_PERMUTATION_LIMIT,
     monte_carlo_permutations: int = _MONTE_CARLO_PERMUTATIONS,
 ) -> Significance:
-    """One-sided permutation test for a positive shift in the median.
+    """One-sided permutation test for a positive shift in location.
 
     The pooled samples are randomly relabeled; the p-value is the fraction of
-    relabelings whose oriented median difference is at least the observed one.
-    Exact enumeration is used while the number of relabelings stays small, with
-    a deterministic Monte Carlo fallback for larger samples.
+    relabelings whose oriented mean difference is at least the observed one.
+    The mean statistic (unlike the median) retains separation under constant
+    groups. Exact enumeration is used while the number of relabelings stays
+    small, with a deterministic Monte Carlo fallback that shares the
+    TypeScript implementation's FNV-1a/mulberry32 random stream.
     """
     candidate_samples = [float(value) for value in candidate]
     best_samples = [float(value) for value in best]
@@ -408,7 +479,7 @@ def permutation_test_median(
     pooled = candidate_samples + best_samples
     candidate_count = len(candidate_samples)
     total_count = len(pooled)
-    observed = _oriented_median_diff(candidate_samples, best_samples, direction)
+    observed = _oriented_mean_diff(candidate_samples, best_samples, direction)
 
     combinations = math.comb(total_count, candidate_count)
     if combinations <= exact_limit:
@@ -418,26 +489,33 @@ def permutation_test_median(
             selected = set(indices)
             group = [pooled[index] for index in indices]
             complement = [pooled[index] for index in range(total_count) if index not in selected]
-            if _oriented_median_diff(group, complement, direction) >= observed:
+            if _oriented_mean_diff(group, complement, direction) >= observed:
                 at_least += 1
             total += 1
         p_value = at_least / total
-        method = f"exact_permutation_median({candidate_count}v{len(best_samples)}, n={total})"
+        method = f"exact_permutation_mean({candidate_count}v{len(best_samples)}, n={total})"
     else:
-        fingerprint = repr(
-            (direction, tuple(round(value, 12) for value in candidate_samples), tuple(round(value, 12) for value in best_samples))
+        # Same fingerprint string the TypeScript side feeds its FNV-1a hash —
+        # both streams then draw the identical shuffle sequence.
+        fingerprint = (
+            f"{direction}|{','.join(f'{value:.12f}' for value in candidate_samples)}"
+            f"|{','.join(f'{value:.12f}' for value in best_samples)}"
         ).encode("utf-8")
-        rng = random.Random(zlib.crc32(fingerprint))
+        rand = _mulberry32(_fnv1a32(fingerprint))
         at_least = 0
         for _ in range(monte_carlo_permutations):
             shuffled = pooled.copy()
-            rng.shuffle(shuffled)
-            if _oriented_median_diff(shuffled[:candidate_count], shuffled[candidate_count:], direction) >= observed:
+            _shuffle(shuffled, rand)
+            if _oriented_mean_diff(shuffled[:candidate_count], shuffled[candidate_count:], direction) >= observed:
                 at_least += 1
         p_value = (at_least + 1) / (monte_carlo_permutations + 1)
-        method = f"monte_carlo_permutation_median({candidate_count}v{len(best_samples)}, n={monte_carlo_permutations})"
+        method = f"monte_carlo_permutation_mean({candidate_count}v{len(best_samples)}, n={monte_carlo_permutations})"
 
     return Significance(method=method, p_value=p_value, alpha=alpha, significant=p_value < alpha)
+
+
+# Kept as an alias: the statistic is now the oriented mean difference.
+permutation_test_median = permutation_test_mean
 
 
 def evaluate_stop_policy(
@@ -570,6 +648,10 @@ def decide_with_samples(
         raise ValueError("alpha must be in (0, 1]")
     if min_samples < 2:
         raise ValueError("min_samples must be at least 2")
+    if not 0 <= min_effect_size_pct <= 100:
+        raise ValueError("min_effect_size_pct must be in [0, 100]")
+    if not 0 <= noise_floor_pct <= 100:
+        raise ValueError("noise_floor_pct must be in [0, 100]")
 
     candidate_samples = [float(value) for value in candidate]
     if not candidate_samples:
@@ -595,6 +677,23 @@ def decide_with_samples(
     best_samples = [float(value) for value in best] if best is not None else []
     if any(not math.isfinite(value) for value in best_samples):
         return Decision("discard", "best samples contain non-finite values", outcome="invalid")
+    # A first measurement becomes the comparison point for every later run —
+    # it must survive the same noise and sample gates as any candidate before
+    # it may be persisted as best.
+    if noise_floor_pct > 0 and candidate_stats.cv_pct > noise_floor_pct:
+        return Decision(
+            "stop",
+            f"benchmark noise exceeds floor — candidate CV {candidate_stats.cv_pct:.2f}% (floor {noise_floor_pct:.2f}%)",
+            outcome="noisy",
+            evidence={"candidate": candidate_stats.as_dict()},
+        )
+    if candidate_stats.count < min_samples:
+        return Decision(
+            "discard",
+            f"insufficient samples — candidate n={candidate_stats.count} (minimum {min_samples})",
+            outcome="insufficient_samples",
+            evidence={"candidate": candidate_stats.as_dict()},
+        )
     if not best_samples:
         return Decision(
             "baseline",
@@ -873,6 +972,9 @@ def cmd_decide(args: argparse.Namespace) -> int:
     else:
         if args.candidate is None:
             raise ValueError("--candidate is required when --samples is not provided")
+        scalar_guardrails = json.loads(args.guardrails_json) if args.guardrails_json else []
+        if not isinstance(scalar_guardrails, list):
+            raise ValueError("guardrails-json must be a JSON array")
         decision = decide(
             direction=args.direction,
             candidate=args.candidate,
@@ -881,6 +983,7 @@ def cmd_decide(args: argparse.Namespace) -> int:
             noise_floor_pct=args.noise_floor_pct,
             tests_passed=not args.tests_failed,
             noisy=args.noisy,
+            guardrails=scalar_guardrails,
         )
     print(json.dumps(decision.as_dict(), indent=2, sort_keys=True))
     return 0 if decision.action in ("baseline", "keep") else 1

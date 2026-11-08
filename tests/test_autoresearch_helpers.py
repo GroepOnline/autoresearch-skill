@@ -175,7 +175,7 @@ class PermutationTests(unittest.TestCase):
         )
         self.assertTrue(significance.significant)
         self.assertLess(significance.p_value, 0.05)
-        self.assertIn("exact_permutation_median", significance.method)
+        self.assertIn("exact_permutation_mean", significance.method)
 
     def test_overlapping_samples_are_not_significant(self):
         significance = ar.permutation_test_median(
@@ -291,5 +291,43 @@ class DecisionFixtureTests(unittest.TestCase):
                 self.assertEqual(decision.outcome, case["expectedOutcome"])
 
 
+class RegressionLaneJTests(unittest.TestCase):
+    def test_constant_groups_clear_improvement_is_significant(self):
+        sig = ar.permutation_test_median([1.0] * 7, [10.0] * 7, direction="lower")
+        self.assertTrue(sig.significant, f"p={sig.p_value}")
+        self.assertLess(sig.p_value, 0.05)
+
+    def test_zero_mean_nonconstant_cv_is_unbounded(self):
+        stats = ar.compute_stats([-3, -2, -1, 0, 1, 2, 3])
+        self.assertEqual(stats.cv_pct, float("inf"))
+
+    def test_noisy_first_measurement_cannot_become_baseline(self):
+        noisy = ar.decide_with_samples(candidate=[10, 80], best=None, direction="lower", noise_floor_pct=5, min_samples=3)
+        self.assertEqual(noisy.action, "stop")
+        self.assertEqual(noisy.outcome, "noisy")
+        under = ar.decide_with_samples(candidate=[1, 2], best=None, direction="lower", min_samples=3)
+        self.assertEqual(under.action, "discard")
+        self.assertEqual(under.outcome, "insufficient_samples")
+        clean = ar.decide_with_samples(candidate=[10, 10, 10], best=None, direction="lower")
+        self.assertEqual(clean.action, "baseline")
+
+    def test_out_of_range_thresholds_rejected(self):
+        with self.assertRaises(ValueError):
+            ar.decide(direction="lower", candidate=1.0, best=2.0, min_effect_size_pct=-1)
+        with self.assertRaises(ValueError):
+            ar.decide(direction="lower", candidate=1.0, best=2.0, noise_floor_pct=101)
+        with self.assertRaises(ValueError):
+            ar.decide_with_samples(candidate=[1, 2, 3], best=[4, 5, 6], direction="lower", min_effect_size_pct=-0.5)
+
+    def test_scalar_decide_honors_guardrails(self):
+        failing = [{"name": "mem", "direction": "lower", "tolerance_pct": 2.0, "candidate": 150.0, "best": 100.0}]
+        decision = ar.decide(direction="lower", candidate=1.0, best=2.0, guardrails=failing)
+        self.assertEqual(decision.action, "discard")
+        self.assertEqual(decision.outcome, "guardrail_failed")
+        ok = ar.decide(direction="lower", candidate=1.0, best=2.0, guardrails=[{"name": "mem", "direction": "lower", "tolerance_pct": 60.0, "candidate": 150.0, "best": 100.0}])
+        self.assertEqual(ok.action, "keep")
+
+
 if __name__ == "__main__":
+
     unittest.main()

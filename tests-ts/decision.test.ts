@@ -72,7 +72,7 @@ test("permutation test separates clear improvements from overlap", () => {
   );
   assert.equal(separated.significant, true);
   assert.ok(separated.pValue < 0.05);
-  assert.match(separated.method, /exact_permutation_median/);
+  assert.match(separated.method, /exact_permutation_mean/);
 
   const overlapping = permutationTestMedian(
     [100, 102, 98, 101, 99, 100, 101],
@@ -128,4 +128,32 @@ test("decideValue keeps at the threshold boundary like decideWithSamples", () =>
   assert.equal(decideValue({ candidate: 100, direction: "lower" }).action, "baseline");
   assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", testsPassed: false }).action, "discard");
   assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", noisy: true }).action, "stop");
+});
+
+test("constant groups with clear separation are significant", () => {
+  const result = permutationTestMedian([1, 1, 1, 1, 1, 1, 1], [10, 10, 10, 10, 10, 10, 10], "lower");
+  assert.equal(result.significant, true, `p=${result.pValue}`);
+  assert.ok(result.pValue < 0.05);
+});
+
+test("zero-mean nonconstant samples get an unbounded CV", () => {
+  const stats = computeStats([-3, -2, -1, 0, 1, 2, 3]);
+  assert.equal(stats.cvPct, Number.POSITIVE_INFINITY);
+});
+
+test("a noisy or undersampled first measurement cannot become baseline", () => {
+  const noisy = decideWithSamples({ candidateSamples: [10, 80], direction: "lower", policy: { noise_floor_pct: 5, min_samples: 3 } });
+  assert.equal(noisy.action, "stop");
+  assert.equal(noisy.outcome, "noisy");
+  const undersampled = decideWithSamples({ candidateSamples: [1, 2], direction: "lower", policy: { min_samples: 3 } });
+  assert.equal(undersampled.action, "discard");
+  assert.equal(undersampled.outcome, "insufficient_samples");
+  const clean = decideWithSamples({ candidateSamples: [10, 10, 10], direction: "lower" });
+  assert.equal(clean.action, "baseline");
+});
+
+test("out-of-range thresholds are rejected at the decision entry points", () => {
+  assert.throws(() => decideValue({ candidate: 104, best: 100, direction: "lower", minEffectSizePct: -5 }), /\[0, 100\]/);
+  assert.throws(() => decideValue({ candidate: 1, best: 2, direction: "lower", noiseFloorPct: -5 }), /\[0, 100\]/);
+  assert.throws(() => decideWithSamples({ candidateSamples: [1, 2, 3], direction: "lower", policy: { min_effect_size_pct: 101 } }), /\[0, 100\]/);
 });

@@ -4,6 +4,7 @@ import { z } from "zod";
 import {
   decideValue,
   decideWithSamples,
+  evaluateGuardrails,
   formatDecisionText,
   POLICY_VERSION,
   type DecisionHistory,
@@ -403,11 +404,11 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           throw new Error("autoresearch_decide: best_samples must be a non-empty array of finite numbers");
         }
       }
-      if (params.min_effect_size_pct !== undefined && (typeof params.min_effect_size_pct !== "number" || !Number.isFinite(params.min_effect_size_pct))) {
-        throw new Error("autoresearch_decide: min_effect_size_pct must be a finite number if provided");
+      if (params.min_effect_size_pct !== undefined && (typeof params.min_effect_size_pct !== "number" || !Number.isFinite(params.min_effect_size_pct) || params.min_effect_size_pct < 0 || params.min_effect_size_pct > 100)) {
+        throw new Error("autoresearch_decide: min_effect_size_pct must be in [0, 100] if provided");
       }
-      if (params.noise_floor_pct !== undefined && (typeof params.noise_floor_pct !== "number" || !Number.isFinite(params.noise_floor_pct))) {
-        throw new Error("autoresearch_decide: noise_floor_pct must be a finite number if provided");
+      if (params.noise_floor_pct !== undefined && (typeof params.noise_floor_pct !== "number" || !Number.isFinite(params.noise_floor_pct) || params.noise_floor_pct < 0 || params.noise_floor_pct > 100)) {
+        throw new Error("autoresearch_decide: noise_floor_pct must be in [0, 100] if provided");
       }
       if (params.alpha !== undefined && (typeof params.alpha !== "number" || !Number.isFinite(params.alpha) || params.alpha <= 0 || params.alpha > 1)) {
         throw new Error("autoresearch_decide: alpha must be in (0, 1] if provided");
@@ -446,6 +447,20 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       });
 
       if (!hasSamples) {
+        // The scalar path must honor the same guardrails as the sample path —
+        // a primary keep that violates a supplied secondary metric is wrong.
+        const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
+        if (guardrailFailures.length > 0) {
+          const result: DecisionResult = {
+            action: "discard",
+            reason: `guardrail regression: ${guardrailFailures.join("; ")}`,
+            improvementPct: null,
+            policyVersion: POLICY_VERSION,
+            outcome: "guardrail_failed",
+            guardrails: guardrailResults,
+          };
+          return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
+        }
         const result = decideValue({
           candidate: params.candidate,
           best: params.best,
@@ -455,6 +470,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           testsPassed: params.tests_passed ?? true,
           noisy: params.noisy ?? false,
         });
+        if (guardrailResults.length > 0) result.guardrails = guardrailResults;
         return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
       }
 

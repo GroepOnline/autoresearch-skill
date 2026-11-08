@@ -114,7 +114,15 @@ export function computeStats(values: number[]): SampleStats {
   const stdev = count >= 2
     ? Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (count - 1))
     : 0;
-  const cvPct = count >= 2 && mean !== 0 ? (stdev / Math.abs(mean)) * 100 : 0;
+  // A zero mean with nonzero spread is the noisiest case, not a clean one:
+  // report an unbounded CV so the noise gate can never pass it.
+  const cvPct = count >= 2
+    ? mean !== 0
+      ? (stdev / Math.abs(mean)) * 100
+      : stdev > 0
+        ? Number.POSITIVE_INFINITY
+        : 0
+    : 0;
   return {
     count,
     median: median(values),
@@ -126,8 +134,14 @@ export function computeStats(values: number[]): SampleStats {
   };
 }
 
-function orientedMedianDiff(candidate: number[], best: number[], direction: Direction): number {
-  const diff = median(candidate) - median(best);
+// The permutation statistic uses the mean difference, not the median: with
+// repeated (constant) samples the median difference is insensitive to any
+// minority of relabelings, so a clear 90% improvement scored p=0.5. The mean
+// retains group separation under every relabeling; medians still drive the
+// reported effect size.
+function orientedMeanDiff(candidate: number[], best: number[], direction: Direction): number {
+  const mean = (values: number[]) => values.reduce((sum, value) => sum + value, 0) / values.length;
+  const diff = mean(candidate) - mean(best);
   return direction === "higher" ? diff : -diff;
 }
 
@@ -180,7 +194,10 @@ function shuffle(values: number[], random: () => number): void {
   }
 }
 
-export function permutationTestMedian(
+/** @deprecated Statistic is now the oriented mean difference; kept as an alias for callers. */
+export const permutationTestMedian = permutationTestMean;
+
+export function permutationTestMean(
   candidate: number[],
   best: number[],
   direction: Direction,
@@ -195,7 +212,7 @@ export function permutationTestMedian(
   const pooled = [...candidate, ...best];
   const candidateCount = candidate.length;
   const totalCount = pooled.length;
-  const observed = orientedMedianDiff(candidate, best, direction);
+  const observed = orientedMeanDiff(candidate, best, direction);
   const totalCombinations = binomial(totalCount, candidateCount);
 
   if (totalCombinations <= exactLimit) {
@@ -205,11 +222,11 @@ export function permutationTestMedian(
       const selected = new Set(indices);
       const group = indices.map(index => pooled[index]);
       const complement = pooled.filter((_, index) => !selected.has(index));
-      if (orientedMedianDiff(group, complement, direction) >= observed) atLeast++;
+      if (orientedMeanDiff(group, complement, direction) >= observed) atLeast++;
       total++;
     }
     return {
-      method: `exact_permutation_median(${candidateCount}v${best.length}, n=${total})`,
+      method: `exact_permutation_mean(${candidateCount}v${best.length}, n=${total})`,
       pValue: atLeast / total,
       alpha,
       significant: atLeast / total < alpha,
@@ -222,13 +239,13 @@ export function permutationTestMedian(
   for (let i = 0; i < monteCarloPermutations; i++) {
     const shuffled = [...pooled];
     shuffle(shuffled, random);
-    if (orientedMedianDiff(shuffled.slice(0, candidateCount), shuffled.slice(candidateCount), direction) >= observed) {
+    if (orientedMeanDiff(shuffled.slice(0, candidateCount), shuffled.slice(candidateCount), direction) >= observed) {
       atLeast++;
     }
   }
   const pValue = (atLeast + 1) / (monteCarloPermutations + 1);
   return {
-    method: `monte_carlo_permutation_median(${candidateCount}v${best.length}, n=${monteCarloPermutations})`,
+    method: `monte_carlo_permutation_mean(${candidateCount}v${best.length}, n=${monteCarloPermutations})`,
     pValue,
     alpha,
     significant: pValue < alpha,
@@ -259,7 +276,7 @@ export function evaluateStopPolicy(history: DecisionHistory): StopCondition {
   return { stopped: false, reason: null };
 }
 
-function evaluateGuardrails(guardrails: GuardrailInput[]): { results: GuardrailResult[]; failures: string[] } {
+export function evaluateGuardrails(guardrails: GuardrailInput[]): { results: GuardrailResult[]; failures: string[] } {
   const results: GuardrailResult[] = [];
   const failures: string[] = [];
 
@@ -346,6 +363,8 @@ export function decideWithSamples(params: {
   if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
   if (!(alpha > 0 && alpha <= 1)) throw new Error("alpha must be in (0, 1]");
   if (minSamples < 2) throw new Error("min_samples must be at least 2");
+  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
 
   const candidateSamples = [...params.candidateSamples];
   if (candidateSamples.length === 0) {
@@ -375,6 +394,29 @@ export function decideWithSamples(params: {
   const bestSamples = params.bestSamples ? [...params.bestSamples] : [];
   if (bestSamples.some(value => !Number.isFinite(value))) {
     return { action: "discard", reason: "best samples contain non-finite values", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+  }
+  // A first measurement becomes the comparison point for every later run —
+  // it must survive the same noise and sample gates as any candidate before
+  // it may be persisted as best.
+  if (noiseFloorPct > 0 && candidateStats.cvPct > noiseFloorPct) {
+    return {
+      action: "stop",
+      reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% (floor ${noiseFloorPct.toFixed(2)}%)`,
+      improvementPct: null,
+      policyVersion: POLICY_VERSION,
+      outcome: "noisy",
+      evidence: { candidate: candidateStats },
+    };
+  }
+  if (candidateStats.count < minSamples) {
+    return {
+      action: "discard",
+      reason: `insufficient samples — candidate n=${candidateStats.count} (minimum ${minSamples})`,
+      improvementPct: null,
+      policyVersion: POLICY_VERSION,
+      outcome: "insufficient_samples",
+      evidence: { candidate: candidateStats },
+    };
   }
   if (bestSamples.length === 0) {
     return {
@@ -432,7 +474,7 @@ export function decideWithSamples(params: {
     };
   }
 
-  const significance = permutationTestMedian(candidateSamples, bestSamples, direction, alpha);
+  const significance = permutationTestMean(candidateSamples, bestSamples, direction, alpha);
   evidence.significance = {
     method: significance.method,
     p_value: significance.pValue,
@@ -455,7 +497,7 @@ export function decideWithSamples(params: {
     // significantly worse candidate must not survive via the simplification
     // branch, so test the reverse direction before keeping.
     const reverseDirection = direction === "lower" ? "higher" : "lower";
-    const worse = permutationTestMedian(candidateSamples, bestSamples, reverseDirection, alpha).significant;
+    const worse = permutationTestMean(candidateSamples, bestSamples, reverseDirection, alpha).significant;
     if (worse) {
       return {
         action: "discard",
@@ -563,6 +605,8 @@ export function decideValue(params: {
   const candidate = params.candidate;
 
   if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
+  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
   if (!Number.isFinite(candidate)) {
     return { action: "discard", reason: "candidate metric is not finite", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
   }

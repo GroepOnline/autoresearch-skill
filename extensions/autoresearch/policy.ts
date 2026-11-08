@@ -80,6 +80,9 @@ const RUNTIME_ARTIFACT_PATTERNS = [
   /^\.autoresearch\/worklog\.md$/,
   /^\.autoresearch\/\.autoresearch-off$/,
   /^\.agents\/autoresearch(?:\/|$)/, // legacy runtime layout, still allowed for migration
+  // Security audit trail written by the tool_call guard itself; without this
+  // entry a blocked call's own log file would trip the post-run audit.
+  /^\.autoresearch-audit\.jsonl$/,
 ];
 
 // Whitelist of allowed bash commands with their full allowed argument patterns.
@@ -202,7 +205,10 @@ function redactSensitiveText(text: string): string {
   redacted = redacted.replace(/\bAuthorization\s*=\s*[^'"\n\r]+/gi, "Authorization=[redacted]");
   redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]");
   redacted = redacted.replace(
-    /\b(?:api[-_]?key|token|secret|password|passwd)\s*[:=]\s*['"]?[^'"`\s]+['"]?/gi,
+    // Env-style names such as OPENAI_API_KEY or AWS_SECRET_ACCESS_KEY carry a
+    // prefix before the sensitive word, so the keyword may sit inside a longer
+    // identifier. Require an identifier boundary, not a bare word boundary.
+    /\b[\w-]*(?:api[-_]?key|private[-_]?key|access[-_]?key|_key|_token|_secret|_password|token|secret|password|passwd|credential)[\w-]*\s*[:=]\s*['"]?[^'"`\s]+['"]?/gi,
     (match) => {
       const idx = match.search(/[:=]/);
       return idx >= 0 ? `${match.slice(0, idx + 1)}[redacted]` : "[redacted]";
