@@ -738,7 +738,9 @@ export function buildSecurityAuditEntry(
     type: "security_block",
     timestamp: new Date().toISOString(),
     tool: toolName,
-    reason,
+    // Policy reasons embed the offending command/path; redact them too so a
+    // blocked `curl -H 'Authorization: Bearer …'` never lands in the audit log.
+    reason: redactSensitiveText(reason),
   };
 
   if (typeof input.path === "string" && input.path.trim()) {
