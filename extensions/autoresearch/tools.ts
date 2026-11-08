@@ -469,11 +469,20 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
       }
 
+      const hasBestSamples = Array.isArray(params.best_samples) && params.best_samples.length > 0;
+      if (!hasBestSamples && params.best !== undefined && params.best !== null) {
+        // A scalar `best` wrapped in a one-element array can never satisfy
+        // min_samples and would silently discard every candidate. Require the
+        // caller to pass real repeated best samples, or use the scalar
+        // candidate/best path for a threshold-only decision.
+        throw new Error(
+          "autoresearch_decide: best_samples must be provided when samples are given; a scalar best cannot back a significance test"
+        );
+      }
+
       const result = decideWithSamples({
         candidateSamples: params.samples,
-        bestSamples: Array.isArray(params.best_samples) && params.best_samples.length > 0
-          ? params.best_samples
-          : (params.best !== undefined && params.best !== null ? [params.best] : null),
+        bestSamples: hasBestSamples ? params.best_samples : null,
         direction: params.direction,
         policy: {
           min_effect_size_pct: params.min_effect_size_pct,
