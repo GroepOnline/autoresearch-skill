@@ -128,6 +128,7 @@ test("test runner discovers all TS files with spaces and preserves process isola
     "a first.test.ts": `
       import test from "node:test";
       test("first fixture", () => {
+        console.log("fixture-pid", process.pid);
         process.env.AUTORESEARCH_RUNNER_FIXTURE = "must not leak";
       });
     `,
@@ -136,6 +137,7 @@ test("test runner discovers all TS files with spaces and preserves process isola
       import test from "node:test";
       const answer: number = 42;
       test("second fixture", () => {
+        console.log("fixture-pid", process.pid);
         assert.equal(answer, 42);
         assert.equal(process.env.AUTORESEARCH_RUNNER_FIXTURE, undefined);
       });
@@ -147,6 +149,9 @@ test("test runner discovers all TS files with spaces and preserves process isola
   assert.equal(result.status, 0, result.stdout + result.stderr);
   assert.match(result.stdout, /first fixture/);
   assert.match(result.stdout, /second fixture/);
+  const pids = [...result.stdout.matchAll(/fixture-pid (\d+)/g)].map((match) => match[1]);
+  assert.equal(pids.length, 2, result.stdout);
+  assert.equal(new Set(pids).size, 2, "test files must run in distinct processes");
 });
 
 test("test runner propagates assertion failures", (t) => {
