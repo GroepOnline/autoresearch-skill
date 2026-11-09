@@ -9,6 +9,7 @@ import test, { type TestContext } from "node:test";
 const root = dirname(dirname(fileURLToPath(import.meta.url)));
 const legacyNode = process.env.AUTORESEARCH_LEGACY_NODE;
 
+/** Build a temporary runner project and remove it when the test finishes. */
 function fixture(t: TestContext, files: Record<string, string>): string {
   const cwd = mkdtempSync(join(tmpdir(), "autoresearch runner "));
   t.after(() => rmSync(cwd, { recursive: true, force: true }));
@@ -27,6 +28,7 @@ function fixture(t: TestContext, files: Record<string, string>): string {
   return cwd;
 }
 
+/** Run the fixture from outside its root to verify cwd-independent discovery. */
 function run(cwd: string, nodeExecutable = process.execPath) {
   const env = { ...process.env };
   // These are independent CLI runs, not children of this Node test coordinator.
