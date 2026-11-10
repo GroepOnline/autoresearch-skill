@@ -176,6 +176,31 @@ function captureCommit(cwd: string): string | null {
   }
 }
 
+/** Human-readable summary lines for the autoresearch_state tool. */
+function stateSummaryLines(state: ReturnType<typeof readState>): string[] {
+  const config = state.config;
+  if (!config) return ["No active autoresearch session. Use /autoresearch new <goal> to start."];
+
+  const lines = [
+    `Session: ${config.name}`,
+    `Metric: ${metricName(config)} (${direction(config)})`,
+    `Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`,
+  ];
+  if (state.baselineMetric !== null)
+    lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
+  if (state.bestMetric !== null && state.bestRun !== null) {
+    lines.push(
+      `Best: ${fmt(state.bestMetric, metricUnit(config))} run #${state.bestRun} ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
+    );
+  }
+  const last = state.results.at(-1);
+  if (last) lines.push(`Last: run #${last.run} → ${last.status} — ${last.description}`);
+  if (state.isPaused) lines.push("Status: PAUSED");
+  if (config.max_runs !== undefined) lines.push(`Budget: max ${config.max_runs} runs`);
+  if (config.max_minutes !== undefined) lines.push(`Budget: max ${config.max_minutes} min`);
+  return lines;
+}
+
 export function registerAutoresearchTools(pi: ExtensionAPI): void {
   // ─── autoresearch_state ──────────────────────────────────────────────────────
   pi.registerTool({
@@ -198,30 +223,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         );
       }
 
-      const config = state.config;
-      const lines: string[] = [];
-
-      if (!config) {
-        lines.push("No active autoresearch session. Use /autoresearch new <goal> to start.");
-      } else {
-        lines.push(`Session: ${config.name}`);
-        lines.push(`Metric: ${metricName(config)} (${direction(config)})`);
-        lines.push(
-          `Runs: ${state.runCount} | ✅ ${state.keptCount} | ❌ ${state.discardedCount} | 💥 ${state.crashedCount}`
-        );
-        if (state.baselineMetric !== null)
-          lines.push(`Baseline: ${fmt(state.baselineMetric, metricUnit(config))}`);
-        if (state.bestMetric !== null && state.bestRun !== null) {
-          lines.push(
-            `Best: ${fmt(state.bestMetric, metricUnit(config))} run #${state.bestRun} ${delta(state.bestMetric, state.baselineMetric ?? 0)}`
-          );
-        }
-        const last = state.results.at(-1);
-        if (last) lines.push(`Last: run #${last.run} → ${last.status} — ${last.description}`);
-        if (state.isPaused) lines.push("Status: PAUSED");
-        if (config.max_runs !== undefined) lines.push(`Budget: max ${config.max_runs} runs`);
-        if (config.max_minutes !== undefined) lines.push(`Budget: max ${config.max_minutes} min`);
-      }
+      const lines: string[] = stateSummaryLines(state);
 
       return {
         content: [{ type: "text", text: lines.join("\n") }],
