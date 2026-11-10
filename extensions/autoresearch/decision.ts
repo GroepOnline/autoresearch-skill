@@ -343,82 +343,107 @@ function evidencePolicy(policy: {
   };
 }
 
-export function decideWithSamples(params: {
-  candidateSamples: number[];
-  bestSamples?: number[] | null;
-  direction: Direction;
-  policy?: DecisionPolicy;
-  testsPassed?: boolean;
-  guardrails?: GuardrailInput[];
-  history?: DecisionHistory;
-  simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
-}): DecisionResult {
-  const direction = params.direction;
-  const minEffectSizePct = params.policy?.min_effect_size_pct ?? 3.0;
-  const noiseFloorPct = params.policy?.noise_floor_pct ?? 0.0;
-  const alpha = params.policy?.alpha ?? 0.05;
-  const minSamples = params.policy?.min_samples ?? 3;
-  const requireSignificance = params.policy?.require_significance ?? true;
+/** Fully resolved decision policy: every default applied once, up front. */
+interface ResolvedPolicy {
+  minEffectSizePct: number;
+  noiseFloorPct: number;
+  alpha: number;
+  minSamples: number;
+  requireSignificance: boolean;
+}
 
+function resolvePolicy(policy?: DecisionPolicy): ResolvedPolicy {
+  return {
+    minEffectSizePct: policy?.min_effect_size_pct ?? 3.0,
+    noiseFloorPct: policy?.noise_floor_pct ?? 0.0,
+    alpha: policy?.alpha ?? 0.05,
+    minSamples: policy?.min_samples ?? 3,
+    requireSignificance: policy?.require_significance ?? true,
+  };
+}
+
+function assertPolicyBounds(direction: Direction, policy: ResolvedPolicy): void {
   if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
-  if (!(alpha > 0 && alpha <= 1)) throw new Error("alpha must be in (0, 1]");
-  if (minSamples < 2) throw new Error("min_samples must be at least 2");
-  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
-  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
+  if (!(policy.alpha > 0 && policy.alpha <= 1)) throw new Error("alpha must be in (0, 1]");
+  if (policy.minSamples < 2) throw new Error("min_samples must be at least 2");
+  if (!(policy.minEffectSizePct >= 0 && policy.minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(policy.noiseFloorPct >= 0 && policy.noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
+}
 
-  const candidateSamples = [...params.candidateSamples];
-  if (candidateSamples.length === 0) {
-    return { action: "discard", reason: "candidate has no samples", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+function invalidDecision(reason: string): DecisionResult {
+  return { action: "discard", reason, improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+}
+
+/** Evaluate gates in order and return the first decision that fires. */
+function firstDecision(...gates: Array<() => DecisionResult | null>): DecisionResult | null {
+  for (const gate of gates) {
+    const result = gate();
+    if (result !== null) return result;
   }
+  return null;
+}
+
+function rejectInvalidMeasurement(candidateSamples: number[], testsPassed: boolean | undefined): DecisionResult | null {
+  if (candidateSamples.length === 0) return invalidDecision("candidate has no samples");
   if (candidateSamples.some(value => !Number.isFinite(value))) {
-    return { action: "discard", reason: "candidate samples contain non-finite values", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+    return invalidDecision("candidate samples contain non-finite values");
   }
-  if (params.testsPassed === false) {
-    return { action: "discard", reason: "correctness checks failed", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
-  }
+  if (testsPassed === false) return invalidDecision("correctness checks failed");
+  return null;
+}
 
-  if (params.history) {
-    const stop = evaluateStopPolicy(params.history);
-    if (stop.stopped) {
-      return {
-        action: "stop",
-        reason: stop.reason ?? "stop policy triggered",
-        improvementPct: null,
-        policyVersion: POLICY_VERSION,
-        outcome: "stopped",
-      };
-    }
-  }
+function rejectOnStopPolicy(history?: DecisionHistory): DecisionResult | null {
+  if (!history) return null;
+  const stop = evaluateStopPolicy(history);
+  if (!stop.stopped) return null;
+  return {
+    action: "stop",
+    reason: stop.reason ?? "stop policy triggered",
+    improvementPct: null,
+    policyVersion: POLICY_VERSION,
+    outcome: "stopped",
+  };
+}
 
-  const candidateStats = computeStats(candidateSamples);
-  const bestSamples = params.bestSamples ? [...params.bestSamples] : [];
+function rejectNonFiniteBest(bestSamples: number[]): DecisionResult | null {
   if (bestSamples.some(value => !Number.isFinite(value))) {
-    return { action: "discard", reason: "best samples contain non-finite values", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+    return invalidDecision("best samples contain non-finite values");
   }
-  // A first measurement becomes the comparison point for every later run —
-  // it must survive the same noise and sample gates as any candidate before
-  // it may be persisted as best.
-  if (noiseFloorPct > 0 && candidateStats.cvPct > noiseFloorPct) {
+  return null;
+}
+
+/**
+ * Candidate-only gates: noise, sample sufficiency, and baseline detection.
+ * A first measurement becomes the comparison point for every later run — it
+ * must survive the same noise and sample gates as any candidate before it may
+ * be persisted as best.
+ */
+function candidateMeasurementGate(
+  candidateStats: SampleStats,
+  hasBest: boolean,
+  policy: ResolvedPolicy
+): DecisionResult | null {
+  if (policy.noiseFloorPct > 0 && candidateStats.cvPct > policy.noiseFloorPct) {
     return {
       action: "stop",
-      reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% (floor ${noiseFloorPct.toFixed(2)}%)`,
+      reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% (floor ${policy.noiseFloorPct.toFixed(2)}%)`,
       improvementPct: null,
       policyVersion: POLICY_VERSION,
       outcome: "noisy",
       evidence: { candidate: candidateStats },
     };
   }
-  if (candidateStats.count < minSamples) {
+  if (candidateStats.count < policy.minSamples) {
     return {
       action: "discard",
-      reason: `insufficient samples — candidate n=${candidateStats.count} (minimum ${minSamples})`,
+      reason: `insufficient samples — candidate n=${candidateStats.count} (minimum ${policy.minSamples})`,
       improvementPct: null,
       policyVersion: POLICY_VERSION,
       outcome: "insufficient_samples",
       evidence: { candidate: candidateStats },
     };
   }
-  if (bestSamples.length === 0) {
+  if (!hasBest) {
     return {
       action: "baseline",
       reason: "first valid measurement becomes baseline",
@@ -428,39 +453,45 @@ export function decideWithSamples(params: {
       evidence: { candidate: candidateStats },
     };
   }
+  return null;
+}
 
-  const bestStats = computeStats(bestSamples);
-  const threshold = Math.max(minEffectSizePct, noiseFloorPct);
-  const evidence: Record<string, unknown> = {
-    candidate: candidateStats,
-    best: bestStats,
-    threshold_pct: threshold,
-    policy: evidencePolicy({ minEffectSizePct, noiseFloorPct, alpha, minSamples, requireSignificance }),
-  };
-
-  if (noiseFloorPct > 0 && (candidateStats.cvPct > noiseFloorPct || bestStats.cvPct > noiseFloorPct)) {
+/** Gates that need both sides: noise floor on either side, then sufficiency. */
+function pairMeasurementGate(
+  candidateStats: SampleStats,
+  bestStats: SampleStats,
+  policy: ResolvedPolicy,
+  evidence: Record<string, unknown>
+): DecisionResult | null {
+  if (policy.noiseFloorPct > 0 && (candidateStats.cvPct > policy.noiseFloorPct || bestStats.cvPct > policy.noiseFloorPct)) {
     return {
       action: "stop",
-      reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% / best CV ${bestStats.cvPct.toFixed(2)}% (floor ${noiseFloorPct.toFixed(2)}%)`,
+      reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% / best CV ${bestStats.cvPct.toFixed(2)}% (floor ${policy.noiseFloorPct.toFixed(2)}%)`,
       improvementPct: null,
       policyVersion: POLICY_VERSION,
       outcome: "noisy",
       evidence,
     };
   }
-
-  if (candidateStats.count < minSamples || bestStats.count < minSamples) {
+  if (candidateStats.count < policy.minSamples || bestStats.count < policy.minSamples) {
     return {
       action: "discard",
-      reason: `insufficient samples — candidate n=${candidateStats.count}, best n=${bestStats.count} (minimum ${minSamples} per side)`,
+      reason: `insufficient samples — candidate n=${candidateStats.count}, best n=${bestStats.count} (minimum ${policy.minSamples} per side)`,
       improvementPct: null,
       policyVersion: POLICY_VERSION,
       outcome: "insufficient_samples",
       evidence,
     };
   }
+  return null;
+}
 
-  const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(params.guardrails ?? []);
+/** Attach guardrail evidence, then reject the candidate on any regression. */
+function applyGuardrails(
+  guardrails: GuardrailInput[],
+  evidence: Record<string, unknown>
+): DecisionResult | null {
+  const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
   if (guardrailResults.length > 0) evidence.guardrails = guardrailResults;
   if (guardrailFailures.length > 0) {
     return {
@@ -473,72 +504,95 @@ export function decideWithSamples(params: {
       guardrails: guardrailResults,
     };
   }
+  return null;
+}
 
-  const significance = permutationTestMean(candidateSamples, bestSamples, direction, alpha);
-  evidence.significance = {
-    method: significance.method,
-    p_value: significance.pValue,
-    alpha: significance.alpha,
-    significant: significance.significant,
-  };
+/**
+ * A simplification may only keep a statistically tied candidate. A
+ * significantly worse candidate must not survive via the simplification
+ * branch, so the reverse direction is tested before keeping.
+ */
+function simplificationDecision(args: {
+  direction: Direction;
+  policy: ResolvedPolicy;
+  candidateSamples: number[];
+  bestSamples: number[];
+  significance: Significance;
+  improvement: number | null;
+  simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
+  evidence: Record<string, unknown>;
+}): DecisionResult | null {
+  const { direction, policy, candidateSamples, bestSamples, significance, improvement, simplification, evidence } =
+    args;
+  const tied = !significance.significant
+    && simplification?.removes_complexity === true
+    && simplification.behavior_unchanged === true;
+  if (!tied) return null;
 
-  const improvement = relativeImprovement(direction, candidateStats.median, bestStats.median);
-  if (improvement !== null) evidence.effect_size_pct = improvement;
-
-  const simplification = params.simplification;
-  if (simplification !== undefined) {
-    evidence.simplification = {
-      removes_complexity: simplification.removes_complexity === true,
-      behavior_unchanged: simplification.behavior_unchanged === true,
-    };
-  }
-  if (!significance.significant && simplification?.removes_complexity === true && simplification.behavior_unchanged === true) {
-    // A simplification may only keep a statistically tied candidate. A
-    // significantly worse candidate must not survive via the simplification
-    // branch, so test the reverse direction before keeping.
-    const reverseDirection = direction === "lower" ? "higher" : "lower";
-    const worse = permutationTestMean(candidateSamples, bestSamples, reverseDirection, alpha).significant;
-    if (worse) {
-      return {
-        action: "discard",
-        reason: `simplification candidate is significantly worse (reverse p < ${alpha})`,
-        improvementPct: improvement,
-        policyVersion: POLICY_VERSION,
-        outcome: "below_threshold",
-        evidence,
-      };
-    }
-    return {
-      action: "keep",
-      reason: "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
-      improvementPct: improvement,
-      policyVersion: POLICY_VERSION,
-      outcome: "simplification",
-      evidence,
-    };
-  }
-
-  if (bestStats.median === 0) {
-    const improved = direction === "lower" ? candidateStats.median < 0 : candidateStats.median > 0;
-    if (improved && significance.significant) {
-      return {
-        action: "keep",
-        reason: "strict absolute improvement over a zero best value",
-        improvementPct: null,
-        policyVersion: POLICY_VERSION,
-        outcome: "conclusive",
-        evidence,
-      };
-    }
+  const reverseDirection: Direction = direction === "lower" ? "higher" : "lower";
+  const worse = permutationTestMean(candidateSamples, bestSamples, reverseDirection, policy.alpha).significant;
+  if (worse) {
     return {
       action: "discard",
-      reason: "zero best value requires strict absolute improvement",
-      improvementPct: null,
+      reason: `simplification candidate is significantly worse (reverse p < ${policy.alpha})`,
+      improvementPct: improvement,
       policyVersion: POLICY_VERSION,
       outcome: "below_threshold",
       evidence,
     };
   }
+  return {
+    action: "keep",
+    reason: "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
+    improvementPct: improvement,
+    policyVersion: POLICY_VERSION,
+    outcome: "simplification",
+    evidence,
+  };
+}
+
+/** A zero best median leaves no relative improvement metric: require an absolute win. */
+function zeroMedianDecision(args: {
+  direction: Direction;
+  candidateStats: SampleStats;
+  bestStats: SampleStats;
+  significance: Significance;
+  evidence: Record<string, unknown>;
+}): DecisionResult | null {
+  const { direction, candidateStats, bestStats, significance, evidence } = args;
+  if (bestStats.median !== 0) return null;
+
+  const improved = direction === "lower" ? candidateStats.median < 0 : candidateStats.median > 0;
+  if (improved && significance.significant) {
+    return {
+      action: "keep",
+      reason: "strict absolute improvement over a zero best value",
+      improvementPct: null,
+      policyVersion: POLICY_VERSION,
+      outcome: "conclusive",
+      evidence,
+    };
+  }
+  return {
+    action: "discard",
+    reason: "zero best value requires strict absolute improvement",
+    improvementPct: null,
+    policyVersion: POLICY_VERSION,
+    outcome: "below_threshold",
+    evidence,
+  };
+}
+
+/** Significance gate first, then the minimum effect size. Always decides. */
+function thresholdDecision(args: {
+  policy: ResolvedPolicy;
+  improvement: number | null;
+  threshold: number;
+  significance: Significance;
+  evidence: Record<string, unknown>;
+}): DecisionResult {
+  const { policy, threshold, significance, evidence } = args;
+  const improvement = args.improvement;
 
   if (improvement === null) {
     // Unreachable in practice: a null improvement only occurs when the best
@@ -552,18 +606,16 @@ export function decideWithSamples(params: {
       evidence,
     };
   }
-
-  if (requireSignificance && !significance.significant) {
+  if (policy.requireSignificance && !significance.significant) {
     return {
       action: "discard",
-      reason: `improvement ${improvement.toFixed(2)}% is not statistically significant (p=${significance.pValue.toFixed(4)} >= alpha=${alpha})`,
+      reason: `improvement ${improvement.toFixed(2)}% is not statistically significant (p=${significance.pValue.toFixed(4)} >= alpha=${policy.alpha})`,
       improvementPct: improvement,
       policyVersion: POLICY_VERSION,
       outcome: "not_significant",
       evidence,
     };
   }
-
   if (improvement >= threshold) {
     return {
       action: "keep",
@@ -574,7 +626,6 @@ export function decideWithSamples(params: {
       evidence,
     };
   }
-
   return {
     action: "discard",
     reason: `improvement ${improvement.toFixed(2)}% is below threshold ${threshold.toFixed(2)}%`,
@@ -583,6 +634,163 @@ export function decideWithSamples(params: {
     outcome: "below_threshold",
     evidence,
   };
+}
+
+/** Significance test + effect size, then the ordered outcome ladder. */
+function decideFromSamples(args: {
+  direction: Direction;
+  policy: ResolvedPolicy;
+  candidateSamples: number[];
+  bestSamples: number[];
+  candidateStats: SampleStats;
+  bestStats: SampleStats;
+  threshold: number;
+  evidence: Record<string, unknown>;
+  simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
+}): DecisionResult {
+  const { direction, policy, candidateSamples, bestSamples, candidateStats, bestStats, threshold, evidence } = args;
+
+  const significance = permutationTestMean(candidateSamples, bestSamples, direction, policy.alpha);
+  evidence.significance = {
+    method: significance.method,
+    p_value: significance.pValue,
+    alpha: significance.alpha,
+    significant: significance.significant,
+  };
+
+  const improvement = relativeImprovement(direction, candidateStats.median, bestStats.median);
+  if (improvement !== null) evidence.effect_size_pct = improvement;
+
+  const simplification = args.simplification;
+  if (simplification !== undefined) {
+    evidence.simplification = {
+      removes_complexity: simplification.removes_complexity === true,
+      behavior_unchanged: simplification.behavior_unchanged === true,
+    };
+  }
+
+  const simplificationOutcome = simplificationDecision({
+    direction,
+    policy,
+    candidateSamples,
+    bestSamples,
+    significance,
+    improvement,
+    simplification,
+    evidence,
+  });
+  if (simplificationOutcome) return simplificationOutcome;
+
+  const zeroOutcome = zeroMedianDecision({ direction, candidateStats, bestStats, significance, evidence });
+  if (zeroOutcome) return zeroOutcome;
+
+  return thresholdDecision({ policy, improvement, threshold, significance, evidence });
+}
+
+export function decideWithSamples(params: {
+  candidateSamples: number[];
+  bestSamples?: number[] | null;
+  direction: Direction;
+  policy?: DecisionPolicy;
+  testsPassed?: boolean;
+  guardrails?: GuardrailInput[];
+  history?: DecisionHistory;
+  simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
+}): DecisionResult {
+  const direction = params.direction;
+  const policy = resolvePolicy(params.policy);
+  const candidateSamples = [...params.candidateSamples];
+  const bestSamples = params.bestSamples ? [...params.bestSamples] : [];
+
+  assertPolicyBounds(direction, policy);
+
+  const inputRejection = firstDecision(
+    () => rejectInvalidMeasurement(candidateSamples, params.testsPassed),
+    () => rejectOnStopPolicy(params.history),
+    () => rejectNonFiniteBest(bestSamples)
+  );
+  if (inputRejection) return inputRejection;
+
+  const candidateStats = computeStats(candidateSamples);
+  const candidateRejection = candidateMeasurementGate(candidateStats, bestSamples.length > 0, policy);
+  if (candidateRejection) return candidateRejection;
+
+  const bestStats = computeStats(bestSamples);
+  const threshold = Math.max(policy.minEffectSizePct, policy.noiseFloorPct);
+  const evidence: Record<string, unknown> = {
+    candidate: candidateStats,
+    best: bestStats,
+    threshold_pct: threshold,
+    policy: evidencePolicy(policy),
+  };
+
+  const pairRejection = pairMeasurementGate(candidateStats, bestStats, policy, evidence);
+  if (pairRejection) return pairRejection;
+
+  const guardrailRejection = applyGuardrails(params.guardrails ?? [], evidence);
+  if (guardrailRejection) return guardrailRejection;
+
+  return decideFromSamples({
+    direction,
+    policy,
+    candidateSamples,
+    bestSamples,
+    candidateStats,
+    bestStats,
+    threshold,
+    evidence,
+    simplification: params.simplification,
+  });
+}
+
+function assertScalarPolicy(direction: Direction, minEffectSizePct: number, noiseFloorPct: number): void {
+  if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
+  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
+}
+
+function rejectScalarInput(
+  params: { best?: number | null; testsPassed?: boolean; noisy?: boolean },
+  candidate: number
+): DecisionResult | null {
+  if (!Number.isFinite(candidate)) return invalidDecision("candidate metric is not finite");
+  if (params.testsPassed === false) return invalidDecision("correctness checks failed");
+  if (params.noisy) {
+    return {
+      action: "stop",
+      reason: "benchmark noise too high",
+      improvementPct: null,
+      policyVersion: POLICY_VERSION,
+      outcome: "noisy",
+    };
+  }
+  if (params.best === undefined || params.best === null) {
+    return {
+      action: "baseline",
+      reason: "first measurement becomes baseline",
+      improvementPct: 0,
+      policyVersion: POLICY_VERSION,
+      outcome: "baseline",
+    };
+  }
+  return null;
+}
+
+function zeroBestScalarDecision(direction: Direction, candidate: number): DecisionResult {
+  const improved = direction === "lower" ? candidate < 0 : candidate > 0;
+  return {
+    action: improved ? "keep" : "discard",
+    reason: "zero best value requires strict absolute improvement",
+    improvementPct: improved ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY,
+    policyVersion: POLICY_VERSION,
+    outcome: improved ? "conclusive" : "below_threshold",
+  };
+}
+
+function scalarImprovementPct(direction: Direction, candidate: number, best: number): number {
+  return direction === "lower"
+    ? ((best - candidate) / Math.abs(best)) * 100
+    : ((candidate - best) / Math.abs(best)) * 100;
 }
 
 /**
@@ -604,41 +812,19 @@ export function decideValue(params: {
   const noiseFloorPct = params.noiseFloorPct ?? 0.0;
   const candidate = params.candidate;
 
-  if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
-  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
-  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
-  if (!Number.isFinite(candidate)) {
-    return { action: "discard", reason: "candidate metric is not finite", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
-  }
-  if (params.testsPassed === false) {
-    return { action: "discard", reason: "correctness checks failed", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
-  }
-  if (params.noisy) {
-    return { action: "stop", reason: "benchmark noise too high", improvementPct: null, policyVersion: POLICY_VERSION, outcome: "noisy" };
-  }
-  if (params.best === undefined || params.best === null) {
-    return { action: "baseline", reason: "first measurement becomes baseline", improvementPct: 0, policyVersion: POLICY_VERSION, outcome: "baseline" };
-  }
-  if (!Number.isFinite(params.best)) throw new Error("best must be a finite number when provided");
+  assertScalarPolicy(direction, minEffectSizePct, noiseFloorPct);
+
+  const rejected = rejectScalarInput(params, candidate);
+  if (rejected) return rejected;
+  if (typeof params.best !== "number" || !Number.isFinite(params.best))
+    throw new Error("best must be a finite number when provided");
 
   const best = params.best;
   const threshold = Math.max(minEffectSizePct, noiseFloorPct);
 
-  if (best === 0) {
-    const improved = direction === "lower" ? candidate < 0 : candidate > 0;
-    const improvementPct = improved ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY;
-    return {
-      action: improved ? "keep" : "discard",
-      reason: "zero best value requires strict absolute improvement",
-      improvementPct,
-      policyVersion: POLICY_VERSION,
-      outcome: improved ? "conclusive" : "below_threshold",
-    };
-  }
+  if (best === 0) return zeroBestScalarDecision(direction, candidate);
 
-  const improvementPct = direction === "lower"
-    ? ((best - candidate) / Math.abs(best)) * 100
-    : ((candidate - best) / Math.abs(best)) * 100;
+  const improvementPct = scalarImprovementPct(direction, candidate, best);
 
   // Shared rule with decideWithSamples and benchmark-policy.md: keep at a
   // threshold tie (improvement_pct >= max(min_effect_size_pct, noise_floor_pct)).
@@ -650,6 +836,7 @@ export function decideValue(params: {
   const text = `improvement ${improvementPct.toFixed(2)}% is below threshold ${threshold.toFixed(2)}% or worse than best`;
   return { action: "discard", reason: text, improvementPct, policyVersion: POLICY_VERSION, outcome: "below_threshold" };
 }
+
 
 export function formatDecisionText(result: DecisionResult): string {
   return `${result.action.toUpperCase()} — ${result.reason}`;

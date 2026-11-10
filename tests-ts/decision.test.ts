@@ -152,6 +152,28 @@ test("a noisy or undersampled first measurement cannot become baseline", () => {
   assert.equal(clean.action, "baseline");
 });
 
+test("scalar path keeps its gate order: correctness and noise outrank a bad best value", () => {
+  // The scalar decision evaluates correctness and noise gates before it even
+  // looks at `best`, so a non-finite best must not throw when an earlier gate
+  // already decides. This pins the ordering the shared guardrail ladder relies on.
+  assert.doesNotThrow(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower", testsPassed: false }));
+  assert.equal(
+    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", testsPassed: false }).outcome,
+    "invalid"
+  );
+  assert.equal(decideValue({ candidate: 5, best: Number.NaN, direction: "lower", noisy: true }).outcome, "noisy");
+  // Only a reachable best value is validated, and then strictly.
+  assert.throws(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower" }), /finite number/);
+  // A zero best median has no relative improvement metric and needs an absolute win.
+  const zeroBestWin = decideValue({ candidate: -1, best: 0, direction: "lower" });
+  assert.equal(zeroBestWin.action, "keep");
+  assert.equal(zeroBestWin.outcome, "conclusive");
+  const zeroBestLoss = decideValue({ candidate: 1, best: 0, direction: "lower" });
+  assert.equal(zeroBestLoss.action, "discard");
+  assert.equal(zeroBestLoss.outcome, "below_threshold");
+  assert.equal(decideValue({ candidate: Number.NaN, best: 10, direction: "lower" }).outcome, "invalid");
+});
+
 test("out-of-range thresholds are rejected at the decision entry points", () => {
   assert.throws(() => decideValue({ candidate: 104, best: 100, direction: "lower", minEffectSizePct: -5 }), /\[0, 100\]/);
   assert.throws(() => decideValue({ candidate: 1, best: 2, direction: "lower", noiseFloorPct: -5 }), /\[0, 100\]/);

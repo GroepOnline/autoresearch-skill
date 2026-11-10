@@ -613,6 +613,264 @@ def _relative_improvement(*, direction: Direction, candidate_median: float, best
     return (candidate_median - best_median) / abs(best_median) * 100.0
 
 
+def _assert_policy_bounds(
+    direction: Direction,
+    alpha: float,
+    min_samples: int,
+    min_effect_size_pct: float,
+    noise_floor_pct: float,
+) -> None:
+    if direction not in ("lower", "higher"):
+        raise ValueError("direction must be 'lower' or 'higher'")
+    if not 0 < alpha <= 1:
+        raise ValueError("alpha must be in (0, 1]")
+    if min_samples < 2:
+        raise ValueError("min_samples must be at least 2")
+    if not 0 <= min_effect_size_pct <= 100:
+        raise ValueError("min_effect_size_pct must be in [0, 100]")
+    if not 0 <= noise_floor_pct <= 100:
+        raise ValueError("noise_floor_pct must be in [0, 100]")
+
+
+def _reject_invalid_measurement(candidate_samples: Sequence[float], tests_passed: bool) -> Decision | None:
+    if not candidate_samples:
+        return Decision("discard", "candidate has no samples", outcome="invalid")
+    if any(not math.isfinite(value) for value in candidate_samples):
+        return Decision("discard", "candidate samples contain non-finite values", outcome="invalid")
+    if not tests_passed:
+        return Decision("discard", "correctness checks failed", outcome="invalid")
+    return None
+
+
+def _reject_non_finite_best(best_samples: Sequence[float]) -> Decision | None:
+    if any(not math.isfinite(value) for value in best_samples):
+        return Decision("discard", "best samples contain non-finite values", outcome="invalid")
+    return None
+
+
+def _stop_from_history(history: Mapping[str, Any] | None) -> Decision | None:
+    if not history:
+        return None
+    stop = evaluate_stop_policy(
+        consecutive_discards=int(history.get("consecutive_discards", 0) or 0),
+        runs_since_improvement=int(history.get("runs_since_improvement", 0) or 0),
+        max_consecutive_discards=(
+            int(history["max_consecutive_discards"]) if history.get("max_consecutive_discards") is not None else 5
+        ),
+        max_runs_without_improvement=(
+            int(history["max_runs_without_improvement"])
+            if history.get("max_runs_without_improvement") is not None
+            else 10
+        ),
+        remaining_runs=history.get("remaining_runs"),
+        remaining_minutes=history.get("remaining_minutes"),
+    )
+    if not stop.stopped:
+        return None
+    return Decision("stop", stop.reason or "stop policy triggered", outcome="stopped")
+
+
+def _candidate_measurement_gate(
+    candidate_stats: SampleStats,
+    has_best: bool,
+    noise_floor_pct: float,
+    min_samples: int,
+) -> Decision | None:
+    """Candidate-only gates: noise, sample sufficiency, and baseline detection.
+
+    A first measurement becomes the comparison point for every later run — it
+    must survive the same noise and sample gates as any candidate before it may
+    be persisted as best.
+    """
+    if noise_floor_pct > 0 and candidate_stats.cv_pct > noise_floor_pct:
+        return Decision(
+            "stop",
+            f"benchmark noise exceeds floor — candidate CV {candidate_stats.cv_pct:.2f}% (floor {noise_floor_pct:.2f}%)",
+            outcome="noisy",
+            evidence={"candidate": candidate_stats.as_dict()},
+        )
+    if candidate_stats.count < min_samples:
+        return Decision(
+            "discard",
+            f"insufficient samples — candidate n={candidate_stats.count} (minimum {min_samples})",
+            outcome="insufficient_samples",
+            evidence={"candidate": candidate_stats.as_dict()},
+        )
+    if not has_best:
+        return Decision(
+            "baseline",
+            "first valid measurement becomes baseline",
+            0.0,
+            outcome="baseline",
+            evidence={"candidate": candidate_stats.as_dict()},
+        )
+    return None
+
+
+def _pair_measurement_gate(
+    candidate_stats: SampleStats,
+    best_stats: SampleStats,
+    noise_floor_pct: float,
+    min_samples: int,
+    evidence: dict[str, Any],
+) -> Decision | None:
+    """Gates that need both sides: noise floor on either side, then sufficiency."""
+    if noise_floor_pct > 0 and (candidate_stats.cv_pct > noise_floor_pct or best_stats.cv_pct > noise_floor_pct):
+        return Decision(
+            "stop",
+            (
+                f"benchmark noise exceeds floor — candidate CV {candidate_stats.cv_pct:.2f}% / "
+                f"best CV {best_stats.cv_pct:.2f}% (floor {noise_floor_pct:.2f}%)"
+            ),
+            outcome="noisy",
+            evidence=evidence,
+        )
+    if candidate_stats.count < min_samples or best_stats.count < min_samples:
+        return Decision(
+            "discard",
+            (
+                f"insufficient samples — candidate n={candidate_stats.count}, best n={best_stats.count} "
+                f"(minimum {min_samples} per side)"
+            ),
+            outcome="insufficient_samples",
+            evidence=evidence,
+        )
+    return None
+
+
+def _guardrail_rejection(
+    guardrails: Sequence[Mapping[str, Any]],
+    evidence: dict[str, Any],
+) -> Decision | None:
+    """Attach guardrail evidence, then reject the candidate on any regression."""
+    guardrail_results, guardrail_failures = _evaluate_guardrails(guardrails)
+    if guardrail_results:
+        evidence["guardrails"] = [guardrail.as_dict() for guardrail in guardrail_results]
+    if guardrail_failures:
+        return Decision(
+            "discard",
+            "guardrail regression: " + "; ".join(guardrail_failures),
+            outcome="guardrail_failed",
+            evidence=evidence,
+            guardrails=tuple(guardrail_results),
+        )
+    return None
+
+
+def _simplification_decision(
+    *,
+    direction: Direction,
+    candidate_samples: Sequence[float],
+    best_samples: Sequence[float],
+    alpha: float,
+    significance: Any,
+    improvement: float | None,
+    simplification: Mapping[str, Any] | None,
+    evidence: dict[str, Any],
+) -> Decision | None:
+    """Keep a statistically tied simplification, never a significantly worse one."""
+    tied = (
+        not significance.significant
+        and simplification is not None
+        and simplification.get("removes_complexity") is True
+        and simplification.get("behavior_unchanged") is True
+    )
+    if not tied:
+        return None
+
+    worse = permutation_test_median(
+        candidate_samples,
+        best_samples,
+        direction="higher" if direction == "lower" else "lower",
+        alpha=alpha,
+    ).significant
+    if worse:
+        return Decision(
+            "discard",
+            f"simplification candidate is significantly worse (reverse p < {alpha})",
+            improvement,
+            outcome="below_threshold",
+            evidence=evidence,
+        )
+    return Decision(
+        "keep",
+        "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
+        improvement,
+        outcome="simplification",
+        evidence=evidence,
+    )
+
+
+def _zero_median_decision(
+    *,
+    direction: Direction,
+    candidate_stats: SampleStats,
+    best_stats: SampleStats,
+    significance: Any,
+    evidence: dict[str, Any],
+) -> Decision | None:
+    """A zero best median leaves no relative improvement metric: require an absolute win."""
+    if best_stats.median != 0:
+        return None
+    improved = candidate_stats.median < 0 if direction == "lower" else candidate_stats.median > 0
+    if improved and significance.significant:
+        return Decision(
+            "keep",
+            "strict absolute improvement over a zero best value",
+            None,
+            outcome="conclusive",
+            evidence=evidence,
+        )
+    return Decision(
+        "discard",
+        "zero best value requires strict absolute improvement",
+        None,
+        outcome="below_threshold",
+        evidence=evidence,
+    )
+
+
+def _threshold_decision(
+    *,
+    require_significance: bool,
+    alpha: float,
+    improvement: float,
+    threshold: float,
+    significance: Any,
+    evidence: dict[str, Any],
+) -> Decision:
+    """Significance gate first, then the minimum effect size. Always decides."""
+    if require_significance and not significance.significant:
+        return Decision(
+            "discard",
+            (
+                f"improvement {improvement:.2f}% is not statistically significant "
+                f"(p={significance.p_value:.4f} >= alpha={alpha})"
+            ),
+            improvement,
+            outcome="not_significant",
+            evidence=evidence,
+        )
+    if improvement >= threshold:
+        return Decision(
+            "keep",
+            (
+                f"improved {improvement:.2f}% over current best (threshold {threshold:.2f}%, "
+                f"p={significance.p_value:.4f})"
+            ),
+            improvement,
+            outcome="conclusive",
+            evidence=evidence,
+        )
+    return Decision(
+        "discard",
+        f"improvement {improvement:.2f}% is below threshold {threshold:.2f}%",
+        improvement,
+        outcome="below_threshold",
+        evidence=evidence,
+    )
+
+
 def decide_with_samples(
     *,
     candidate: Sequence[float],
@@ -642,66 +900,28 @@ def decide_with_samples(
         min_samples = policy.min_samples
         require_significance = policy.require_significance
 
-    if direction not in ("lower", "higher"):
-        raise ValueError("direction must be 'lower' or 'higher'")
-    if not 0 < alpha <= 1:
-        raise ValueError("alpha must be in (0, 1]")
-    if min_samples < 2:
-        raise ValueError("min_samples must be at least 2")
-    if not 0 <= min_effect_size_pct <= 100:
-        raise ValueError("min_effect_size_pct must be in [0, 100]")
-    if not 0 <= noise_floor_pct <= 100:
-        raise ValueError("noise_floor_pct must be in [0, 100]")
+    _assert_policy_bounds(direction, alpha, min_samples, min_effect_size_pct, noise_floor_pct)
 
     candidate_samples = [float(value) for value in candidate]
-    if not candidate_samples:
-        return Decision("discard", "candidate has no samples", outcome="invalid")
-    if any(not math.isfinite(value) for value in candidate_samples):
-        return Decision("discard", "candidate samples contain non-finite values", outcome="invalid")
-    if not tests_passed:
-        return Decision("discard", "correctness checks failed", outcome="invalid")
 
-    if history:
-        stop = evaluate_stop_policy(
-            consecutive_discards=int(history.get("consecutive_discards", 0) or 0),
-            runs_since_improvement=int(history.get("runs_since_improvement", 0) or 0),
-            max_consecutive_discards=int(history["max_consecutive_discards"]) if history.get("max_consecutive_discards") is not None else 5,
-            max_runs_without_improvement=int(history["max_runs_without_improvement"]) if history.get("max_runs_without_improvement") is not None else 10,
-            remaining_runs=history.get("remaining_runs"),
-            remaining_minutes=history.get("remaining_minutes"),
-        )
-        if stop.stopped:
-            return Decision("stop", stop.reason or "stop policy triggered", outcome="stopped")
+    rejection = _reject_invalid_measurement(candidate_samples, tests_passed)
+    if rejection is not None:
+        return rejection
+
+    rejection = _stop_from_history(history)
+    if rejection is not None:
+        return rejection
 
     candidate_stats = compute_stats(candidate_samples)
     best_samples = [float(value) for value in best] if best is not None else []
-    if any(not math.isfinite(value) for value in best_samples):
-        return Decision("discard", "best samples contain non-finite values", outcome="invalid")
-    # A first measurement becomes the comparison point for every later run —
-    # it must survive the same noise and sample gates as any candidate before
-    # it may be persisted as best.
-    if noise_floor_pct > 0 and candidate_stats.cv_pct > noise_floor_pct:
-        return Decision(
-            "stop",
-            f"benchmark noise exceeds floor — candidate CV {candidate_stats.cv_pct:.2f}% (floor {noise_floor_pct:.2f}%)",
-            outcome="noisy",
-            evidence={"candidate": candidate_stats.as_dict()},
-        )
-    if candidate_stats.count < min_samples:
-        return Decision(
-            "discard",
-            f"insufficient samples — candidate n={candidate_stats.count} (minimum {min_samples})",
-            outcome="insufficient_samples",
-            evidence={"candidate": candidate_stats.as_dict()},
-        )
-    if not best_samples:
-        return Decision(
-            "baseline",
-            "first valid measurement becomes baseline",
-            0.0,
-            outcome="baseline",
-            evidence={"candidate": candidate_stats.as_dict()},
-        )
+
+    rejection = _reject_non_finite_best(best_samples)
+    if rejection is not None:
+        return rejection
+
+    rejection = _candidate_measurement_gate(candidate_stats, bool(best_samples), noise_floor_pct, min_samples)
+    if rejection is not None:
+        return rejection
 
     best_stats = compute_stats(best_samples)
     threshold = max(min_effect_size_pct, noise_floor_pct)
@@ -718,39 +938,13 @@ def decide_with_samples(
         ).as_dict(),
     }
 
-    if noise_floor_pct > 0 and (candidate_stats.cv_pct > noise_floor_pct or best_stats.cv_pct > noise_floor_pct):
-        return Decision(
-            "stop",
-            (
-                f"benchmark noise exceeds floor — candidate CV {candidate_stats.cv_pct:.2f}% / "
-                f"best CV {best_stats.cv_pct:.2f}% (floor {noise_floor_pct:.2f}%)"
-            ),
-            outcome="noisy",
-            evidence=evidence,
-        )
+    rejection = _pair_measurement_gate(candidate_stats, best_stats, noise_floor_pct, min_samples, evidence)
+    if rejection is not None:
+        return rejection
 
-    if candidate_stats.count < min_samples or best_stats.count < min_samples:
-        return Decision(
-            "discard",
-            (
-                f"insufficient samples — candidate n={candidate_stats.count}, best n={best_stats.count} "
-                f"(minimum {min_samples} per side)"
-            ),
-            outcome="insufficient_samples",
-            evidence=evidence,
-        )
-
-    guardrail_results, guardrail_failures = _evaluate_guardrails(guardrails)
-    if guardrail_results:
-        evidence["guardrails"] = [guardrail.as_dict() for guardrail in guardrail_results]
-    if guardrail_failures:
-        return Decision(
-            "discard",
-            "guardrail regression: " + "; ".join(guardrail_failures),
-            outcome="guardrail_failed",
-            evidence=evidence,
-            guardrails=tuple(guardrail_results),
-        )
+    rejection = _guardrail_rejection(guardrails, evidence)
+    if rejection is not None:
+        return rejection
 
     significance = permutation_test_median(candidate_samples, best_samples, direction=direction, alpha=alpha)
     evidence["significance"] = significance.as_dict()
@@ -768,84 +962,36 @@ def decide_with_samples(
             "removes_complexity": simplification.get("removes_complexity") is True,
             "behavior_unchanged": simplification.get("behavior_unchanged") is True,
         }
-    if (
-        not significance.significant
-        and simplification is not None
-        and simplification.get("removes_complexity") is True
-        and simplification.get("behavior_unchanged") is True
-    ):
-        # Only a statistically tied candidate may be kept for simplification;
-        # test the reverse direction so a significantly worse candidate still
-        # discards.
-        worse = permutation_test_median(
-            candidate_samples,
-            best_samples,
-            direction="higher" if direction == "lower" else "lower",
-            alpha=alpha,
-        ).significant
-        if worse:
-            return Decision(
-                "discard",
-                f"simplification candidate is significantly worse (reverse p < {alpha})",
-                improvement,
-                outcome="below_threshold",
-                evidence=evidence,
-            )
-        return Decision(
-            "keep",
-            "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
-            improvement,
-            outcome="simplification",
-            evidence=evidence,
-        )
 
-    if best_stats.median == 0:
-        improved = candidate_stats.median < 0 if direction == "lower" else candidate_stats.median > 0
-        if improved and significance.significant:
-            return Decision(
-                "keep",
-                "strict absolute improvement over a zero best value",
-                None,
-                outcome="conclusive",
-                evidence=evidence,
-            )
-        return Decision(
-            "discard",
-            "zero best value requires strict absolute improvement",
-            None,
-            outcome="below_threshold",
-            evidence=evidence,
-        )
+    decision = _simplification_decision(
+        direction=direction,
+        candidate_samples=candidate_samples,
+        best_samples=best_samples,
+        alpha=alpha,
+        significance=significance,
+        improvement=improvement,
+        simplification=simplification,
+        evidence=evidence,
+    )
+    if decision is not None:
+        return decision
 
-    if require_significance and not significance.significant:
-        return Decision(
-            "discard",
-            (
-                f"improvement {improvement:.2f}% is not statistically significant "
-                f"(p={significance.p_value:.4f} >= alpha={alpha})"
-            ),
-            improvement,
-            outcome="not_significant",
-            evidence=evidence,
-        )
+    decision = _zero_median_decision(
+        direction=direction,
+        candidate_stats=candidate_stats,
+        best_stats=best_stats,
+        significance=significance,
+        evidence=evidence,
+    )
+    if decision is not None:
+        return decision
 
-    if improvement >= threshold:
-        return Decision(
-            "keep",
-            (
-                f"improved {improvement:.2f}% over current best (threshold {threshold:.2f}%, "
-                f"p={significance.p_value:.4f})"
-            ),
-            improvement,
-            outcome="conclusive",
-            evidence=evidence,
-        )
-
-    return Decision(
-        "discard",
-        f"improvement {improvement:.2f}% is below threshold {threshold:.2f}%",
-        improvement,
-        outcome="below_threshold",
+    return _threshold_decision(
+        require_significance=require_significance,
+        alpha=alpha,
+        improvement=improvement,
+        threshold=threshold,
+        significance=significance,
         evidence=evidence,
     )
 

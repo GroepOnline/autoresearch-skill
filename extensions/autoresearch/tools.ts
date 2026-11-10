@@ -93,6 +93,36 @@ export interface MetricDecisionResult {
   improvement_pct?: number;
 }
 
+/** Gates that reject a metric before any threshold arithmetic. */
+function metricEarlyRejection(
+  best: number | null | undefined,
+  tests_passed: boolean,
+  noisy: boolean
+): MetricDecisionResult | null {
+  if (!tests_passed) return { action: "discard", reason: "correctness checks failed" };
+  if (noisy) return { action: "stop", reason: "benchmark noise too high" };
+  if (best === undefined || best === null)
+    return { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 };
+  return null;
+}
+
+function metricImprovementPct(direction: "lower" | "higher", candidate: number, best: number): number {
+  return direction === "lower"
+    ? ((best - candidate) / Math.abs(best)) * 100
+    : ((candidate - best) / Math.abs(best)) * 100;
+}
+
+function zeroBestMetricDecision(
+  direction: "lower" | "higher",
+  candidate: number,
+  best: number
+): MetricDecisionResult {
+  const improved = direction === "lower" ? candidate < best : candidate > best;
+  return improved
+    ? { action: "keep", reason: "zero best value requires strict absolute improvement" }
+    : { action: "discard", reason: "zero best value requires strict absolute improvement" };
+}
+
 export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
   const {
     candidate,
@@ -108,24 +138,15 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
   if (!["lower", "higher"].includes(direction))
     throw new Error("direction must be lower or higher");
 
-  if (!tests_passed) return { action: "discard", reason: "correctness checks failed" };
-  if (noisy) return { action: "stop", reason: "benchmark noise too high" };
-  if (best === undefined || best === null)
-    return { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 };
-  if (!Number.isFinite(best)) throw new Error("best must be a finite number when provided");
+  const rejected = metricEarlyRejection(best, tests_passed, noisy);
+  if (rejected) return rejected;
+  if (typeof best !== "number" || !Number.isFinite(best))
+    throw new Error("best must be a finite number when provided");
 
   const threshold = Math.max(min_effect_size_pct, noise_floor_pct);
-  if (best === 0) {
-    const improved = direction === "lower" ? candidate < best : candidate > best;
-    return improved
-      ? { action: "keep", reason: "zero best value requires strict absolute improvement" }
-      : { action: "discard", reason: "zero best value requires strict absolute improvement" };
-  }
+  if (best === 0) return zeroBestMetricDecision(direction, candidate, best);
 
-  const improvementPct =
-    direction === "lower"
-      ? ((best - candidate) / Math.abs(best)) * 100
-      : ((candidate - best) / Math.abs(best)) * 100;
+  const improvementPct = metricImprovementPct(direction, candidate, best);
 
   if (improvementPct >= threshold) {
     return {
