@@ -70,7 +70,7 @@ class SampleStats:
             "median": self.median,
             "mean": self.mean,
             "stdev": self.stdev,
-            "cv_pct": self.cv_pct,
+            "cv_pct": self.cv_pct if math.isfinite(self.cv_pct) else None,
             "min": self.minimum,
             "max": self.maximum,
         }

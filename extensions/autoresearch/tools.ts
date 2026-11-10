@@ -332,6 +332,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         noise_floor_pct: { type: "number", description: "Noise floor (CV %). When exceeded the decision stops instead of scoring. Default: 0." },
         alpha: { type: "number", description: "Significance level for the permutation test. Default: 0.05." },
         min_samples: { type: "integer", description: "Minimum samples per side required to score. Default: 3." },
+        require_significance: { type: "boolean", description: "Require a statistically significant improvement before keeping. Default: true." },
         tests_passed: { type: "boolean", description: "Whether correctness checks passed. Default: true." },
         noisy: { type: "boolean", description: "Explicit signal that the benchmark was too noisy for a reliable result. Default: false." },
         guardrails: {
@@ -416,6 +417,9 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       if (params.min_samples !== undefined && (!Number.isInteger(params.min_samples) || params.min_samples < 2)) {
         throw new Error("autoresearch_decide: min_samples must be an integer >= 2 if provided");
       }
+      if (params.require_significance !== undefined && typeof params.require_significance !== "boolean") {
+        throw new Error("autoresearch_decide: require_significance must be a boolean if provided");
+      }
       if (params.guardrails !== undefined && !Array.isArray(params.guardrails)) {
         throw new Error("autoresearch_decide: guardrails must be an array if provided");
       }
@@ -447,20 +451,10 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       });
 
       if (!hasSamples) {
-        // The scalar path must honor the same guardrails as the sample path —
-        // a primary keep that violates a supplied secondary metric is wrong.
-        const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
-        if (guardrailFailures.length > 0) {
-          const result: DecisionResult = {
-            action: "discard",
-            reason: `guardrail regression: ${guardrailFailures.join("; ")}`,
-            improvementPct: null,
-            policyVersion: POLICY_VERSION,
-            outcome: "guardrail_failed",
-            guardrails: guardrailResults,
-          };
-          return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
-        }
+        // Guardrails are evaluated *after* the primary decision so a stop or
+        // invalid signal (noisy benchmark, failing tests) keeps its own outcome
+        // instead of being masked by `guardrail_failed`. This matches the
+        // sample path and `scripts/autoresearch.py::decide`.
         const result = decideValue({
           candidate: params.candidate,
           best: params.best,
@@ -470,7 +464,19 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           testsPassed: params.tests_passed ?? true,
           noisy: params.noisy ?? false,
         });
+        const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
         if (guardrailResults.length > 0) result.guardrails = guardrailResults;
+        if (guardrailFailures.length > 0 && result.action !== "stop" && result.outcome !== "invalid") {
+          const guarded: DecisionResult = {
+            action: "discard",
+            reason: `guardrail regression: ${guardrailFailures.join("; ")}`,
+            improvementPct: null,
+            policyVersion: POLICY_VERSION,
+            outcome: "guardrail_failed",
+            guardrails: guardrailResults,
+          };
+          return { content: [{ type: "text", text: formatDecisionText(guarded) }], details: decisionDetails(guarded) };
+        }
         return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
       }
 
@@ -505,6 +511,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           noise_floor_pct: params.noise_floor_pct,
           alpha: params.alpha,
           min_samples: params.min_samples,
+          require_significance: params.require_significance,
         },
         testsPassed: params.tests_passed ?? true,
         guardrails,

@@ -301,6 +301,11 @@ class RegressionLaneJTests(unittest.TestCase):
         stats = ar.compute_stats([-3, -2, -1, 0, 1, 2, 3])
         self.assertEqual(stats.cv_pct, float("inf"))
 
+    def test_zero_mean_decision_serializes_to_strict_json(self):
+        decision = ar.decide_with_samples(candidate=[-3, -2, -1, 0, 1, 2, 3], best=None, direction="lower")
+        payload = json.dumps(decision.as_dict(), allow_nan=False)
+        self.assertIn('"cv_pct": null', payload)
+
     def test_noisy_first_measurement_cannot_become_baseline(self):
         noisy = ar.decide_with_samples(candidate=[10, 80], best=None, direction="lower", noise_floor_pct=5, min_samples=3)
         self.assertEqual(noisy.action, "stop")

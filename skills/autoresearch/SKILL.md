@@ -40,11 +40,11 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 
 Load these files when the step requires detail:
 
-- `references/state-protocol.md` for JSONL schema, validation, snapshots, and dashboard source-of-truth rules.
-- `references/benchmark-policy.md` for sample counts, warmups, medians, noise handling, and decision thresholds.
-- `references/safety-policy.md` for git isolation, destructive operation rules, scope limits, and stop conditions.
-- `references/pi-extension.md` for Pi TUI commands and extension behavior.
-- `references/examples.md` for scaffold examples and recommended output formats.
+- `../../references/state-protocol.md` for JSONL schema, validation, snapshots, and dashboard source-of-truth rules.
+- `../../references/benchmark-policy.md` for sample counts, warmups, medians, noise handling, and decision thresholds.
+- `../../references/safety-policy.md` for git isolation, destructive operation rules, scope limits, and stop conditions.
+- `../../references/pi-extension.md` for Pi TUI commands and extension behavior.
+- `../../references/examples.md` for scaffold examples and recommended output formats.
 
 ## Default runtime artifacts
 

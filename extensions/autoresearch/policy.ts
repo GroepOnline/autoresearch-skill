@@ -58,6 +58,9 @@ const DEFAULT_PROTECTED_PATTERNS = [
   /(?:^|\/)\.config\/gcloud\/(?:application_default_credentials\.json|credentials\.db)$/,
   /(?:^|\/)(?:id_rsa|id_ed25519|known_hosts)$/,
   /(?:^|\/).*\.(?:pem|key|p12|pfx)$/,
+  // The security audit trail is evidence: agents must never rewrite it. It
+  // stays ignorable for the post-run audit via RUNTIME_ARTIFACT_PATTERNS.
+  /^\.autoresearch-audit\.jsonl$/,
 ];
 
 const RUNTIME_ARTIFACT_PATTERNS = [
