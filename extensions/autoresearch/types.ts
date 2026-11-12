@@ -49,7 +49,7 @@ export interface ArDecision {
   outcome?: string;
   improvement_pct?: number | null;
   evidence?: Record<string, unknown>;
-  guardrails?: Array<Record<string, unknown>>;
+  guardrails?: Record<string, unknown>[];
 }
 
 export interface NormalizedResult {

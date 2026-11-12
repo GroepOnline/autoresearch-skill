@@ -202,8 +202,6 @@ export function permutationTestMean(
   best: number[],
   direction: Direction,
   alpha = 0.05,
-  exactLimit = EXACT_PERMUTATION_LIMIT,
-  monteCarloPermutations = MONTE_CARLO_PERMUTATIONS,
 ): Significance {
   if (candidate.length === 0 || best.length === 0) throw new Error("permutation test requires samples on both sides");
   if ([...candidate, ...best].some(value => !Number.isFinite(value))) throw new Error("permutation test requires finite samples");
@@ -215,7 +213,7 @@ export function permutationTestMean(
   const observed = orientedMeanDiff(candidate, best, direction);
   const totalCombinations = binomial(totalCount, candidateCount);
 
-  if (totalCombinations <= exactLimit) {
+  if (totalCombinations <= EXACT_PERMUTATION_LIMIT) {
     let atLeast = 0;
     let total = 0;
     for (const indices of combinations(totalCount, candidateCount)) {
@@ -236,16 +234,16 @@ export function permutationTestMean(
   const fingerprint = `${direction}|${candidate.map(value => value.toFixed(12)).join(",")}|${best.map(value => value.toFixed(12)).join(",")}`;
   const random = mulberry32(hashString(fingerprint));
   let atLeast = 0;
-  for (let i = 0; i < monteCarloPermutations; i++) {
+  for (let i = 0; i < MONTE_CARLO_PERMUTATIONS; i++) {
     const shuffled = [...pooled];
     shuffle(shuffled, random);
     if (orientedMeanDiff(shuffled.slice(0, candidateCount), shuffled.slice(candidateCount), direction) >= observed) {
       atLeast++;
     }
   }
-  const pValue = (atLeast + 1) / (monteCarloPermutations + 1);
+  const pValue = (atLeast + 1) / (MONTE_CARLO_PERMUTATIONS + 1);
   return {
-    method: `monte_carlo_permutation_mean(${candidateCount}v${best.length}, n=${monteCarloPermutations})`,
+    method: `monte_carlo_permutation_mean(${candidateCount}v${best.length}, n=${MONTE_CARLO_PERMUTATIONS})`,
     pValue,
     alpha,
     significant: pValue < alpha,
@@ -331,7 +329,7 @@ function evidencePolicy(policy: {
   noiseFloorPct: number;
   alpha: number;
   minSamples: number;
-  requireSignificance: boolean;
+  isSignificanceRequired: boolean;
 }): Record<string, unknown> {
   return {
     policy_version: POLICY_VERSION,
@@ -339,7 +337,7 @@ function evidencePolicy(policy: {
     noise_floor_pct: policy.noiseFloorPct,
     alpha: policy.alpha,
     min_samples: policy.minSamples,
-    require_significance: policy.requireSignificance,
+    require_significance: policy.isSignificanceRequired,
   };
 }
 
@@ -349,7 +347,7 @@ interface ResolvedPolicy {
   noiseFloorPct: number;
   alpha: number;
   minSamples: number;
-  requireSignificance: boolean;
+  isSignificanceRequired: boolean;
 }
 
 function resolvePolicy(policy?: DecisionPolicy): ResolvedPolicy {
@@ -358,7 +356,7 @@ function resolvePolicy(policy?: DecisionPolicy): ResolvedPolicy {
     noiseFloorPct: policy?.noise_floor_pct ?? 0.0,
     alpha: policy?.alpha ?? 0.05,
     minSamples: policy?.min_samples ?? 3,
-    requireSignificance: policy?.require_significance ?? true,
+    isSignificanceRequired: policy?.require_significance ?? true,
   };
 }
 
@@ -375,7 +373,7 @@ function invalidDecision(reason: string): DecisionResult {
 }
 
 /** Evaluate gates in order and return the first decision that fires. */
-function firstDecision(...gates: Array<() => DecisionResult | null>): DecisionResult | null {
+function firstDecision(...gates: (() => DecisionResult | null)[]): DecisionResult | null {
   for (const gate of gates) {
     const result = gate();
     if (result !== null) return result;
@@ -383,12 +381,12 @@ function firstDecision(...gates: Array<() => DecisionResult | null>): DecisionRe
   return null;
 }
 
-function rejectInvalidMeasurement(candidateSamples: number[], testsPassed: boolean | undefined): DecisionResult | null {
+function rejectInvalidMeasurement(candidateSamples: number[], hasPassedTests: boolean | undefined): DecisionResult | null {
   if (candidateSamples.length === 0) return invalidDecision("candidate has no samples");
   if (candidateSamples.some(value => !Number.isFinite(value))) {
     return invalidDecision("candidate samples contain non-finite values");
   }
-  if (testsPassed === false) return invalidDecision("correctness checks failed");
+  if (hasPassedTests === false) return invalidDecision("correctness checks failed");
   return null;
 }
 
@@ -606,7 +604,7 @@ function thresholdDecision(args: {
       evidence,
     };
   }
-  if (policy.requireSignificance && !significance.significant) {
+  if (policy.isSignificanceRequired && !significance.significant) {
     return {
       action: "discard",
       reason: `improvement ${improvement.toFixed(2)}% is not statistically significant (p=${significance.pValue.toFixed(4)} >= alpha=${policy.alpha})`,
@@ -692,7 +690,7 @@ export function decideWithSamples(params: {
   bestSamples?: number[] | null;
   direction: Direction;
   policy?: DecisionPolicy;
-  testsPassed?: boolean;
+  hasPassedTests?: boolean;
   guardrails?: GuardrailInput[];
   history?: DecisionHistory;
   simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
@@ -705,7 +703,7 @@ export function decideWithSamples(params: {
   assertPolicyBounds(direction, policy);
 
   const inputRejection = firstDecision(
-    () => rejectInvalidMeasurement(candidateSamples, params.testsPassed),
+    () => rejectInvalidMeasurement(candidateSamples, params.hasPassedTests),
     () => rejectOnStopPolicy(params.history),
     () => rejectNonFiniteBest(bestSamples)
   );
@@ -750,12 +748,12 @@ function assertScalarPolicy(direction: Direction, minEffectSizePct: number, nois
 }
 
 function rejectScalarInput(
-  params: { best?: number | null; testsPassed?: boolean; noisy?: boolean },
+  params: { best?: number | null; hasPassedTests?: boolean; isNoisy?: boolean },
   candidate: number
 ): DecisionResult | null {
   if (!Number.isFinite(candidate)) return invalidDecision("candidate metric is not finite");
-  if (params.testsPassed === false) return invalidDecision("correctness checks failed");
-  if (params.noisy) {
+  if (params.hasPassedTests === false) return invalidDecision("correctness checks failed");
+  if (params.isNoisy) {
     return {
       action: "stop",
       reason: "benchmark noise too high",
@@ -804,8 +802,8 @@ export function decideValue(params: {
   direction: Direction;
   minEffectSizePct?: number;
   noiseFloorPct?: number;
-  testsPassed?: boolean;
-  noisy?: boolean;
+  hasPassedTests?: boolean;
+  isNoisy?: boolean;
 }): DecisionResult {
   const direction = params.direction;
   const minEffectSizePct = params.minEffectSizePct ?? 3.0;

@@ -103,7 +103,11 @@ test("decideWithSamples attaches evidence and rejects noise", () => {
   });
   assert.equal(kept.action, "keep");
   assert.equal(kept.policyVersion, 3);
-  const evidence = kept.evidence as Record<string, any>;
+  const evidence = kept.evidence as {
+    candidate: { count: number };
+    best: { median: number };
+    significance: { significant: boolean };
+  };
   assert.equal(evidence.candidate.count, 7);
   assert.equal(evidence.best.median, 120);
   assert.equal(evidence.significance.significant, true);
@@ -126,8 +130,8 @@ test("decideValue keeps at the threshold boundary like decideWithSamples", () =>
   assert.equal(decideValue({ candidate: 70, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "keep");
   assert.equal(decideValue({ candidate: 70.01, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "discard");
   assert.equal(decideValue({ candidate: 100, direction: "lower" }).action, "baseline");
-  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", testsPassed: false }).action, "discard");
-  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", noisy: true }).action, "stop");
+  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", hasPassedTests: false }).action, "discard");
+  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", isNoisy: true }).action, "stop");
 });
 
 test("constant groups with clear separation are significant", () => {
@@ -156,12 +160,12 @@ test("scalar path keeps its gate order: correctness and noise outrank a bad best
   // The scalar decision evaluates correctness and noise gates before it even
   // looks at `best`, so a non-finite best must not throw when an earlier gate
   // already decides. This pins the ordering the shared guardrail ladder relies on.
-  assert.doesNotThrow(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower", testsPassed: false }));
+  assert.doesNotThrow(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false }));
   assert.equal(
-    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", testsPassed: false }).outcome,
+    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false }).outcome,
     "invalid"
   );
-  assert.equal(decideValue({ candidate: 5, best: Number.NaN, direction: "lower", noisy: true }).outcome, "noisy");
+  assert.equal(decideValue({ candidate: 5, best: Number.NaN, direction: "lower", isNoisy: true }).outcome, "noisy");
   // Only a reachable best value is validated, and then strictly.
   assert.throws(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower" }), /finite number/);
   // A zero best median has no relative improvement metric and needs an absolute win.

@@ -96,11 +96,11 @@ export interface MetricDecisionResult {
 /** Gates that reject a metric before any threshold arithmetic. */
 function metricEarlyRejection(
   best: number | null | undefined,
-  tests_passed: boolean,
-  noisy: boolean
+  hasPassedTests: boolean,
+  isNoisy: boolean
 ): MetricDecisionResult | null {
-  if (!tests_passed) return { action: "discard", reason: "correctness checks failed" };
-  if (noisy) return { action: "stop", reason: "benchmark noise too high" };
+  if (!hasPassedTests) return { action: "discard", reason: "correctness checks failed" };
+  if (isNoisy) return { action: "stop", reason: "benchmark noise too high" };
   if (best === undefined || best === null)
     return { action: "baseline", reason: "first measurement becomes baseline", improvement_pct: 0 };
   return null;
@@ -130,15 +130,15 @@ export function decideMetric(input: MetricDecisionInput): MetricDecisionResult {
     direction,
     min_effect_size_pct = 3.0,
     noise_floor_pct = 0.0,
-    tests_passed = true,
-    noisy = false,
+    tests_passed: hasPassedTests = true,
+    noisy: isNoisy = false,
   } = input;
 
   if (!Number.isFinite(candidate)) throw new Error("candidate must be a finite number");
   if (!["lower", "higher"].includes(direction))
     throw new Error("direction must be lower or higher");
 
-  const rejected = metricEarlyRejection(best, tests_passed, noisy);
+  const rejected = metricEarlyRejection(best, hasPassedTests, isNoisy);
   if (rejected) return rejected;
   if (typeof best !== "number" || !Number.isFinite(best))
     throw new Error("best must be a finite number when provided");
@@ -484,8 +484,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           direction: params.direction,
           minEffectSizePct: params.min_effect_size_pct,
           noiseFloorPct: params.noise_floor_pct,
-          testsPassed: params.tests_passed ?? true,
-          noisy: params.noisy ?? false,
+          hasPassedTests: params.tests_passed ?? true,
+          isNoisy: params.noisy ?? false,
         });
         const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
         if (guardrailResults.length > 0) result.guardrails = guardrailResults;
@@ -536,7 +536,7 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           min_samples: params.min_samples,
           require_significance: params.require_significance,
         },
-        testsPassed: params.tests_passed ?? true,
+        hasPassedTests: params.tests_passed ?? true,
         guardrails,
         history: params.history as DecisionHistory | undefined,
         simplification: params.simplification,

@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
+import { logger } from "./logger.js";
 import type { LoopState } from "./loop.js";
 import {
   buildContinuationMessage,
@@ -107,7 +108,9 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
         );
         fs.appendFileSync(auditPath, `${JSON.stringify(auditEntry)}\n`);
       } catch (error) {
-        console.error("[autoresearch] Failed to write security audit log:", error);
+        // Best effort: a failed audit write must not break the tool guard.
+        // The logger sanitizes the error so no path or secret leaks.
+        logger.catch("security audit log write", error);
       }
       return { block: true, reason: decision.reason };
     }

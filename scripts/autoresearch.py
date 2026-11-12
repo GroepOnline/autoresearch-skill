@@ -763,7 +763,7 @@ def _simplification_decision(
     candidate_samples: Sequence[float],
     best_samples: Sequence[float],
     alpha: float,
-    significance: Any,
+    significance: Significance,
     improvement: float | None,
     simplification: Mapping[str, Any] | None,
     evidence: dict[str, Any],
@@ -806,7 +806,7 @@ def _zero_median_decision(
     direction: Direction,
     candidate_stats: SampleStats,
     best_stats: SampleStats,
-    significance: Any,
+    significance: Significance,
     evidence: dict[str, Any],
 ) -> Decision | None:
     """A zero best median leaves no relative improvement metric: require an absolute win."""
@@ -836,7 +836,7 @@ def _threshold_decision(
     alpha: float,
     improvement: float,
     threshold: float,
-    significance: Any,
+    significance: Significance,
     evidence: dict[str, Any],
 ) -> Decision:
     """Significance gate first, then the minimum effect size. Always decides."""
