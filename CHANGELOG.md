@@ -4,6 +4,14 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.9.0] - 2026-11-12
+
+### Changed
+- format test-runner.test.ts with prettier
+- reuse a bounded TypeScript test coordinator (#25)
+
+### Maintenance
+- pin checkout/setup-node to full-length SHAs in preview and release
 ## [1.8.0] - 2026-11-03
 
 ### Maintenance
