@@ -10,7 +10,7 @@
  */
 
 import assert from "node:assert/strict";
-import { readFileSync, existsSync } from "node:fs";
+import { readFileSync, readdirSync, existsSync } from "node:fs";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import test from "node:test";
@@ -107,9 +107,12 @@ test("SKILL.md frontmatter has a non-empty name field", () => {
   );
 });
 
-test("SKILL.md frontmatter name matches the package name", () => {
+test("SKILL.md frontmatter name matches the parent directory", () => {
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
-  assert.equal(fm["name"], "pi-autoresearch");
+  // Agent Skills spec: `name` must equal the parent directory name, and skill
+  // ids must be unique. Using the npm package name here would both violate the
+  // spec and collide with skills/pi-autoresearch/SKILL.md.
+  assert.equal(fm["name"], "autoresearch");
 });
 
 test("SKILL.md frontmatter has a non-empty description field", () => {
@@ -300,17 +303,32 @@ test("openai.yaml interface.brand_color is a valid CSS hex colour", () => {
 // Cross-file consistency checks
 // ---------------------------------------------------------------------------
 
-test("SKILL.md name matches package.json name (scope-insensitive)", () => {
-  const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf-8")) as { name: string };
+test("SKILL.md name matches its parent directory (Agent Skills spec)", () => {
   const fm = parseFrontmatter(readText("skills/autoresearch/SKILL.md"));
-  // The npm package is scoped (@groeponline/pi-autoresearch) while the
-  // agent skill id stays unscoped (pi-autoresearch).
-  const unscoped = pkg.name.startsWith("@") ? pkg.name.split("/")[1] : pkg.name;
+  // The npm package is scoped (@groeponline/pi-autoresearch), but a skill id is
+  // the directory it lives in, not the package name.
   assert.equal(
     fm["name"],
-    unscoped,
-    "SKILL.md frontmatter name must match the unscoped package name"
+    "autoresearch",
+    "SKILL.md frontmatter name must match the parent directory name"
   );
+});
+
+test("skill ids stay unique across skills/", () => {
+  const dirs = readdirSync(join(root, "skills"), { withFileTypes: true })
+    .filter((entry) => entry.isDirectory())
+    .map((entry) => entry.name);
+  const names = dirs.map((dir) => {
+    const path = join(root, "skills", dir, "SKILL.md");
+    if (!existsSync(path)) return null;
+    return parseFrontmatter(readFileSync(path, "utf-8"))["name"];
+  });
+  const seen = new Set<string>();
+  for (const name of names) {
+    if (!name) continue;
+    assert.ok(!seen.has(name), `duplicate skill name: ${name}`);
+    seen.add(name);
+  }
 });
 
 test("skills/autoresearch/ is under the path declared in pi.skills", () => {

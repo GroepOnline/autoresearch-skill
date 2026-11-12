@@ -1,5 +1,5 @@
 ---
-name: pi-autoresearch
+name: autoresearch
 description: run bounded, benchmark-driven optimization loops for pi coding agent and repository experiments. use when the user asks to start, resume, audit, or design autoresearch workflows that test one hypothesis at a time, compare measured metrics against a baseline, keep only meaningful improvements above the configured effect-size and noise thresholds, preserve crash-safe state, and avoid unsafe git operations. includes ralph wiggum naive-explorer mode for fully autonomous simple-hypothesis testing.
 ---
 
@@ -32,7 +32,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 4. Establish a baseline with the same benchmark policy used for future runs.
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
 6. Parse `METRIC name=value` lines, compute the benchmark summary, and record the result in append-only JSONL.
-7. Use `autoresearch_decide` (or the Python `decide` helper) for keep/discard decisions. Never keep a result worse than the current best.
+7. Use `autoresearch_decide` for keep/discard decisions, or the Python `decide` helper (`python scripts/autoresearch.py decide ...`) when the plugin is not installed — a skill-only install does not register any `autoresearch_*` tool, and the Python helper is the supported fallback. Never keep a result worse than the current best.
 8. The plugin auto-generates context injection tables and stop summaries, but it only scaffolds `.autoresearch/worklog.md`. After every run, append one short entry under `## Key Insights`: the hypothesis, the kept/discarded outcome, and the lesson that should steer the next hypothesis.
 9. Stop when a budget, safety rule, noisy benchmark, consecutive discard limit, plateau, or explicit stop decision is reached.
 

@@ -779,7 +779,11 @@ function zeroBestScalarDecision(direction: Direction, candidate: number): Decisi
   return {
     action: improved ? "keep" : "discard",
     reason: "zero best value requires strict absolute improvement",
-    improvementPct: improved ? Number.POSITIVE_INFINITY : Number.NEGATIVE_INFINITY,
+    // No relative improvement exists against a zero best value; every other
+    // zero-best path (and the Python `decide` helper) reports null. Returning
+    // ±Infinity only survived JSON serialisation because JSON.stringify maps
+    // it to null, so in-memory consumers saw a different value than the wire.
+    improvementPct: null,
     policyVersion: POLICY_VERSION,
     outcome: improved ? "conclusive" : "below_threshold",
   };

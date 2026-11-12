@@ -183,6 +183,26 @@ test("bash command whitelist allows approved commands", () => {
   assert.equal(evaluateBashCommand("git log --oneline -5").block, false);
   assert.equal(evaluateBashCommand("cat README.md").block, false);
   assert.equal(evaluateBashCommand("pwd").block, false);
+  // Read-only branch inspection stays available.
+  assert.equal(evaluateBashCommand("git branch").block, false);
+  assert.equal(evaluateBashCommand("git branch -a").block, false);
+  assert.equal(evaluateBashCommand("git branch -vv").block, false);
+  assert.equal(evaluateBashCommand("git branch --show-current").block, false);
+  assert.equal(evaluateBashCommand("git branch --merged").block, false);
+  assert.equal(evaluateBashCommand("git branch autoresearch/perf").block, false);
+});
+
+test("git branch ref mutations are blocked, not just the working tree", () => {
+  // `git branch -D main` drops a ref without dirtying the working tree, so the
+  // post-run diff audit can never see it; the whitelist must reject it.
+  assert.equal(evaluateBashCommand("git branch -D main").block, true);
+  assert.equal(evaluateBashCommand("git branch -d main").block, true);
+  assert.equal(evaluateBashCommand("git branch --delete main").block, true);
+  assert.equal(evaluateBashCommand("git branch -m main").block, true);
+  assert.equal(evaluateBashCommand("git branch -M main").block, true);
+  assert.equal(evaluateBashCommand("git branch -f main HEAD~1").block, true);
+  assert.equal(evaluateBashCommand("git branch -u origin/main").block, true);
+  assert.equal(evaluateBashCommand("git branch --set-upstream-to=origin/main").block, true);
 });
 
 test("bash command whitelist blocks unknown commands", () => {

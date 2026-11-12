@@ -99,10 +99,13 @@ const ALLOWED_COMMAND_WHITELIST: Array<[string, RegExp | null]> = [
   ["pytest", /^(?:-v|--verbose|-x|--tb=[\w-]+|-k\s+[\w:-]+|[\w./-]+\.py|tests\/?)$/],
   ["node", /^(?:--version|--help|scripts\/[\w./-]+\.(?:mjs|js)|[\w./-]+\.(?:mjs|js))$/],
 
-  // Git read-only operations
+  // Git read-only operations. `branch` is restricted to read-only flags and
+  // plain branch names: `git branch -D main` drops a ref without touching the
+  // working tree, so the diff-based checks can never see it. Deletion/move/
+  // force/upstream flags are therefore not expressible here (fail closed).
   [
     "git",
-    /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+[\w./=-]+)*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
+    /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+(?:-a|-r|-v|-vv|--all|--list|--show-current|--merged|--no-merged|--contains|--format=[\w%()/.:,-]+|[\w][\w./-]*))*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
   ],
 
   // File operations (read-only)

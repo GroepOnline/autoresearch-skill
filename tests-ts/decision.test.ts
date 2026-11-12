@@ -175,6 +175,11 @@ test("scalar path keeps its gate order: correctness and noise outrank a bad best
   const zeroBestLoss = decideValue({ candidate: 1, best: 0, direction: "lower" });
   assert.equal(zeroBestLoss.action, "discard");
   assert.equal(zeroBestLoss.outcome, "below_threshold");
+  // A zero best value has no relative improvement: report null like every other
+  // zero-best path (and like Python `decide`), never ±Infinity.
+  assert.equal(zeroBestWin.improvementPct, null);
+  assert.equal(zeroBestLoss.improvementPct, null);
+  assert.equal(decideValue({ candidate: 2, best: 0, direction: "higher" }).improvementPct, null);
   assert.equal(decideValue({ candidate: Number.NaN, best: 10, direction: "lower" }).outcome, "invalid");
 });
 

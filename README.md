@@ -145,19 +145,21 @@ Autoresearch is intentionally bounded. Two different mechanisms enforce those bo
 
 - `.autoresearch/.autoresearch-off` pause sentinel;
 - corrupt JSONL state (any parse error);
-- missing experiment contract (`autoresearch.md`) or config;
+- missing configuration (`autoresearch.jsonl` / `autoresearch.md`); the loop re-reads the config, so a contract file that disappears mid-loop is not detected on its own;
 - exhausted run budget or time budget;
 - the last recorded decision has `action: "stop"` (the stop reason comes from the agent);
 - five consecutive discards;
 - plateau after ten runs without improvement.
 
-**2. Gates that block a step instead of stopping the loop.** These run in the tool-call guard and the post-run audit, so they block the offending write/command rather than ending the session:
+**2. The tool-call guard blocks a step.** `evaluateToolCall` in `extensions/autoresearch/policy.ts` rejects the offending tool call before it runs, so the write or command never happens and the loop keeps running:
 
 - non-isolated git context (start is blocked unless `/autoresearch new` can create an `autoresearch/*` branch);
 - dirty git state outside autoresearch runtime artifacts;
 - protected/off-limits path writes;
 - destructive or non-whitelisted git and shell commands;
-- post-run diff violations, including shell-created files outside scope and diffs over the line limit.
+- `write`/`edit`/`str_replace` payloads over the diff line limit.
+
+**3. The post-run audit stops, it does not prevent.** `evaluateWorkingTreeMutation` runs in the `agent_end` handler, after the turn's changes are already on disk. On a violation it writes the pause sentinel and ends the active loop, but it does not roll the change back and it does not block later `bash`/`write`/`edit`/`str_replace` calls. It is what catches shell-driven mutations such as `python -c`, `sed -i` or `cat > file` that bypass the tool-call guard.
 
 **3. Signals the loop does not inspect.** `evaluateContinuation` reads only the state above; it does not look at test results, benchmark noise, or diff content. A failing test or a noisy benchmark makes `autoresearch_decide` return `discard`/`stop` with the matching outcome, but the autonomous loop keeps running until the agent records that `stop` decision in `autoresearch.jsonl`. Treat correctness and noise as agent obligations, not as an automatic gate: record the stop, or the loop continues.
 
