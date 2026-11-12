@@ -195,7 +195,7 @@ test("bash command whitelist allows approved commands", () => {
 
 test("git branch ref mutations are blocked, not just the working tree", () => {
   // `git branch -D main` drops a ref without dirtying the working tree, so the
-  // post-run diff audit can never see it; the whitelist must reject it.
+  // post-run diff audit can never see it; the allowlist must reject it.
   assert.equal(evaluateBashCommand("git branch -D main").block, true);
   assert.equal(evaluateBashCommand("git branch -d main").block, true);
   assert.equal(evaluateBashCommand("git branch --delete main").block, true);
