@@ -33,7 +33,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
 6. Parse `METRIC name=value` lines, compute the benchmark summary, and record the result in append-only JSONL.
 7. Use `autoresearch_decide` (or the Python `decide` helper) for keep/discard decisions. Never keep a result worse than the current best.
-8. The plugin auto-generates context injection tables and stop summaries — no manual worklog maintenance required.
+8. The plugin auto-generates context injection tables and stop summaries, but it only scaffolds `.autoresearch/worklog.md`. After every run, append one short entry under `## Key Insights`: the hypothesis, the kept/discarded outcome, and the lesson that should steer the next hypothesis.
 9. Stop when a budget, safety rule, noisy benchmark, consecutive discard limit, plateau, or explicit stop decision is reached.
 
 ## Required references

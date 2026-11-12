@@ -55,7 +55,7 @@ For npm packaging:
 npm ci
 npm run validate
 npm run package
-pi install ./dist/groeponline-pi-autoresearch-1.2.0.tgz
+pi install ./dist/groeponline-pi-autoresearch-<version>.tgz
 ```
 
 Or install the published package from npm:
@@ -139,21 +139,27 @@ These files are created in the target project, not in this package repository.
 
 ## Safety model
 
-Autoresearch is intentionally bounded. It stops or blocks continuation on:
+Autoresearch is intentionally bounded. Two different mechanisms enforce those bounds, and only the first one runs on its own.
 
-- corrupt or oversized JSONL state;
-- missing or unresolved experiment contract;
-- dirty git state outside autoresearch runtime artifacts;
-- non-isolated git context unless `/autoresearch new` can create an `autoresearch/*` branch;
-- protected/off-limits path writes;
-- destructive git or shell commands;
-- post-run diff violations, including shell-created files outside scope;
-- failed correctness checks;
-- noisy benchmark results;
-- exhausted run/time budget;
+**1. The loop stops by itself.** `evaluateContinuation` in `extensions/autoresearch/loop.ts` re-checks the following before every run and stops without asking:
+
+- `.autoresearch/.autoresearch-off` pause sentinel;
+- corrupt JSONL state (any parse error);
+- missing experiment contract (`autoresearch.md`) or config;
+- exhausted run budget or time budget;
+- the last recorded decision has `action: "stop"` (the stop reason comes from the agent);
 - five consecutive discards;
-- plateau after ten runs without improvement;
-- explicit `.autoresearch-off` pause sentinel.
+- plateau after ten runs without improvement.
+
+**2. Gates that block a step instead of stopping the loop.** These run in the tool-call guard and the post-run audit, so they block the offending write/command rather than ending the session:
+
+- non-isolated git context (start is blocked unless `/autoresearch new` can create an `autoresearch/*` branch);
+- dirty git state outside autoresearch runtime artifacts;
+- protected/off-limits path writes;
+- destructive or non-whitelisted git and shell commands;
+- post-run diff violations, including shell-created files outside scope and diffs over the line limit.
+
+**3. Signals the loop does not inspect.** `evaluateContinuation` reads only the state above; it does not look at test results, benchmark noise, or diff content. A failing test or a noisy benchmark makes `autoresearch_decide` return `discard`/`stop` with the matching outcome, but the autonomous loop keeps running until the agent records that `stop` decision in `autoresearch.jsonl`. Treat correctness and noise as agent obligations, not as an automatic gate: record the stop, or the loop continues.
 
 ## Benchmark contract
 

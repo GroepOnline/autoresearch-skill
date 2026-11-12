@@ -1,6 +1,6 @@
 # Copilot instructions
 
-Repository: GroepChef/autoresearch-skill
+Repository: GroepOnline/autoresearch-skill
 Stack classification: TypeScript skill scaffold / AI agent research loop
 
 When contributing here:
