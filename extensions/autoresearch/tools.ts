@@ -205,6 +205,64 @@ function stateSummaryLines(state: ReturnType<typeof readState>): string[] {
   return lines;
 }
 
+function isFiniteNumber(value: unknown): value is number {
+  return typeof value === "number" && Number.isFinite(value);
+}
+
+function isFiniteNumberArray(value: unknown): boolean {
+  return Array.isArray(value) && value.length > 0 && value.every(isFiniteNumber);
+}
+
+const DECIDE_SCALARS = ["candidate", "best"] as const;
+const DECIDE_SAMPLE_ARRAYS = ["samples", "best_samples"] as const;
+
+const DECIDE_OPTION_RULES: ReadonlyArray<{
+  key: string;
+  valid: (value: unknown) => boolean;
+  message: string;
+}> = [
+  {
+    key: "min_effect_size_pct",
+    valid: (v) => isFiniteNumber(v) && v >= 0 && v <= 100,
+    message: "min_effect_size_pct must be in [0, 100] if provided",
+  },
+  {
+    key: "noise_floor_pct",
+    valid: (v) => isFiniteNumber(v) && v >= 0 && v <= 100,
+    message: "noise_floor_pct must be in [0, 100] if provided",
+  },
+  {
+    key: "alpha",
+    valid: (v) => isFiniteNumber(v) && v > 0 && v <= 1,
+    message: "alpha must be in (0, 1] if provided",
+  },
+  {
+    key: "min_samples",
+    valid: (v) => isFiniteNumber(v) && Number.isInteger(v) && v >= 2,
+    message: "min_samples must be an integer >= 2 if provided",
+  },
+  {
+    key: "require_significance",
+    valid: (v) => typeof v === "boolean",
+    message: "require_significance must be a boolean if provided",
+  },
+  {
+    key: "guardrails",
+    valid: (v) => Array.isArray(v),
+    message: "guardrails must be an array if provided",
+  },
+  {
+    key: "history",
+    valid: (v) => typeof v === "object" && v !== null,
+    message: "history must be an object if provided",
+  },
+  {
+    key: "simplification",
+    valid: (v) => typeof v === "object" && v !== null,
+    message: "simplification must be an object if provided",
+  },
+];
+
 function validateDecideInputs(params: Record<string, unknown>): boolean {
   if (!params || typeof params !== "object") {
     throw new Error("autoresearch_decide: params must be an object");
@@ -213,107 +271,56 @@ function validateDecideInputs(params: Record<string, unknown>): boolean {
     throw new Error("autoresearch_decide: direction must be 'lower' or 'higher'");
   }
   const hasSamples = Array.isArray(params.samples) && params.samples.length > 0;
-  if (!hasSamples && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
+  if (!hasSamples && !isFiniteNumber(params.candidate)) {
     throw new Error(
       "autoresearch_decide: candidate must be a finite number when samples are not provided"
     );
   }
-  if (
-    params.candidate !== undefined &&
-    params.candidate !== null &&
-    (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))
-  ) {
-    throw new Error("autoresearch_decide: candidate must be a finite number if provided");
-  }
-  if (
-    params.best !== undefined &&
-    params.best !== null &&
-    (typeof params.best !== "number" || !Number.isFinite(params.best))
-  ) {
-    throw new Error("autoresearch_decide: best must be a finite number if provided");
-  }
-  if (params.samples !== undefined) {
-    if (
-      !Array.isArray(params.samples) ||
-      params.samples.length === 0 ||
-      params.samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))
-    ) {
-      throw new Error("autoresearch_decide: samples must be a non-empty array of finite numbers");
+  for (const key of DECIDE_SCALARS) {
+    const value = params[key];
+    if (value !== undefined && value !== null && !isFiniteNumber(value)) {
+      throw new Error(`autoresearch_decide: ${key} must be a finite number if provided`);
     }
   }
-  if (params.best_samples !== undefined) {
-    if (
-      !Array.isArray(params.best_samples) ||
-      params.best_samples.length === 0 ||
-      params.best_samples.some(
-        (value: unknown) => typeof value !== "number" || !Number.isFinite(value)
-      )
-    ) {
-      throw new Error(
-        "autoresearch_decide: best_samples must be a non-empty array of finite numbers"
-      );
+  for (const key of DECIDE_SAMPLE_ARRAYS) {
+    if (params[key] !== undefined && !isFiniteNumberArray(params[key])) {
+      throw new Error(`autoresearch_decide: ${key} must be a non-empty array of finite numbers`);
     }
   }
   return hasSamples;
 }
 
 function validateDecideOptions(params: Record<string, unknown>): void {
-  if (
-    params.min_effect_size_pct !== undefined &&
-    (typeof params.min_effect_size_pct !== "number" ||
-      !Number.isFinite(params.min_effect_size_pct) ||
-      params.min_effect_size_pct < 0 ||
-      params.min_effect_size_pct > 100)
-  ) {
-    throw new Error("autoresearch_decide: min_effect_size_pct must be in [0, 100] if provided");
+  for (const rule of DECIDE_OPTION_RULES) {
+    const value = params[rule.key];
+    if (value !== undefined && !rule.valid(value)) {
+      throw new Error(`autoresearch_decide: ${rule.message}`);
+    }
   }
-  if (
-    params.noise_floor_pct !== undefined &&
-    (typeof params.noise_floor_pct !== "number" ||
-      !Number.isFinite(params.noise_floor_pct) ||
-      params.noise_floor_pct < 0 ||
-      params.noise_floor_pct > 100)
-  ) {
-    throw new Error("autoresearch_decide: noise_floor_pct must be in [0, 100] if provided");
+}
+
+function parseDecideGuardrail(raw: Record<string, unknown>): GuardrailInput {
+  if (!raw || typeof raw !== "object")
+    throw new Error("autoresearch_decide: each guardrail must be an object");
+  if (typeof raw.name !== "string" || raw.name.trim() === "")
+    throw new Error("autoresearch_decide: guardrail.name is required");
+  if (raw.direction !== undefined && raw.direction !== "lower" && raw.direction !== "higher") {
+    throw new Error("autoresearch_decide: guardrail.direction must be 'lower' or 'higher'");
   }
-  if (
-    params.alpha !== undefined &&
-    (typeof params.alpha !== "number" ||
-      !Number.isFinite(params.alpha) ||
-      params.alpha <= 0 ||
-      params.alpha > 1)
-  ) {
-    throw new Error("autoresearch_decide: alpha must be in (0, 1] if provided");
+  if (!isFiniteNumber(raw.candidate))
+    throw new Error("autoresearch_decide: guardrail.candidate must be a finite number");
+  if (!isFiniteNumber(raw.best))
+    throw new Error("autoresearch_decide: guardrail.best must be a finite number");
+  if (raw.tolerance_pct !== undefined && !isFiniteNumber(raw.tolerance_pct)) {
+    throw new Error("autoresearch_decide: guardrail.tolerance_pct must be a finite number");
   }
-  if (
-    params.min_samples !== undefined &&
-    (typeof params.min_samples !== "number" ||
-      !Number.isInteger(params.min_samples) ||
-      params.min_samples < 2)
-  ) {
-    throw new Error("autoresearch_decide: min_samples must be an integer >= 2 if provided");
-  }
-  if (
-    params.require_significance !== undefined &&
-    typeof params.require_significance !== "boolean"
-  ) {
-    throw new Error("autoresearch_decide: require_significance must be a boolean if provided");
-  }
-  if (params.guardrails !== undefined && !Array.isArray(params.guardrails)) {
-    throw new Error("autoresearch_decide: guardrails must be an array if provided");
-  }
-  if (
-    params.history !== undefined &&
-    (typeof params.history !== "object" || params.history === null)
-  ) {
-    throw new Error("autoresearch_decide: history must be an object if provided");
-  }
-  if (
-    params.simplification !== undefined &&
-    (typeof params.simplification !== "object" || params.simplification === null)
-  ) {
-    throw new Error("autoresearch_decide: simplification must be an object if provided");
-  }
+  return {
+    name: raw.name,
+    direction: raw.direction === "higher" ? "higher" : "lower",
+    tolerance_pct: typeof raw.tolerance_pct === "number" ? raw.tolerance_pct : 2.0,
+    candidate: raw.candidate,
+    best: raw.best,
+  };
 }
 
 function parseDecideGuardrails(rawGuardrails: unknown): GuardrailInput[] {
@@ -321,32 +328,7 @@ function parseDecideGuardrails(rawGuardrails: unknown): GuardrailInput[] {
   // validateDecideOptions already rejected non-array values, so this is only a
   // type narrowing for the map below.
   const list = Array.isArray(rawGuardrails) ? rawGuardrails : [];
-  return list.map((raw: Record<string, unknown>) => {
-    if (!raw || typeof raw !== "object")
-      throw new Error("autoresearch_decide: each guardrail must be an object");
-    if (typeof raw.name !== "string" || raw.name.trim() === "")
-      throw new Error("autoresearch_decide: guardrail.name is required");
-    if (raw.direction !== undefined && raw.direction !== "lower" && raw.direction !== "higher") {
-      throw new Error("autoresearch_decide: guardrail.direction must be 'lower' or 'higher'");
-    }
-    if (typeof raw.candidate !== "number" || !Number.isFinite(raw.candidate))
-      throw new Error("autoresearch_decide: guardrail.candidate must be a finite number");
-    if (typeof raw.best !== "number" || !Number.isFinite(raw.best))
-      throw new Error("autoresearch_decide: guardrail.best must be a finite number");
-    if (
-      raw.tolerance_pct !== undefined &&
-      (typeof raw.tolerance_pct !== "number" || !Number.isFinite(raw.tolerance_pct))
-    ) {
-      throw new Error("autoresearch_decide: guardrail.tolerance_pct must be a finite number");
-    }
-    return {
-      name: raw.name,
-      direction: raw.direction === "higher" ? "higher" : "lower",
-      tolerance_pct: typeof raw.tolerance_pct === "number" ? raw.tolerance_pct : 2.0,
-      candidate: raw.candidate,
-      best: raw.best,
-    };
-  });
+  return list.map((raw: Record<string, unknown>) => parseDecideGuardrail(raw));
 }
 
 export function registerAutoresearchTools(pi: ExtensionAPI): void {

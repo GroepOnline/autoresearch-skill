@@ -452,31 +452,35 @@ export function evaluateBashCommand(
     };
   }
 
-  // Check always-blocked patterns first (defense in depth)
-  for (const pattern of ALWAYS_BLOCKED_PATTERNS) {
-    if (pattern.test(compact)) {
-      return {
-        block: true,
-        reason: `Autoresearch policy: dangerous pattern detected in command: ${command}`,
-      };
+  const slashNormalized = compact.replaceAll("\\", "/");
+  const blockStages = [
+    // Always-blocked patterns first (defense in depth)
+    {
+      text: compact,
+      patterns: ALWAYS_BLOCKED_PATTERNS,
+      message: "dangerous pattern detected in command",
+    },
+    // Protected paths in command
+    {
+      text: slashNormalized,
+      patterns: SHELL_PROTECTED_PATH_PATTERNS,
+      message: "protected path referenced by shell command",
+    },
+    {
+      text: slashNormalized,
+      patterns: [SHELL_PATH_TRAVERSAL_PATTERN],
+      message: "path traversal outside the project root is not allowed",
+    },
+  ];
+  for (const stage of blockStages) {
+    for (const pattern of stage.patterns) {
+      if (pattern.test(stage.text)) {
+        return {
+          block: true,
+          reason: `Autoresearch policy: ${stage.message}: ${command}`,
+        };
+      }
     }
-  }
-
-  // Check protected paths in command
-  for (const pattern of SHELL_PROTECTED_PATH_PATTERNS) {
-    if (pattern.test(compact.replaceAll("\\", "/"))) {
-      return {
-        block: true,
-        reason: `Autoresearch policy: protected path referenced by shell command: ${command}`,
-      };
-    }
-  }
-
-  if (SHELL_PATH_TRAVERSAL_PATTERN.test(compact.replaceAll("\\", "/"))) {
-    return {
-      block: true,
-      reason: `Autoresearch policy: path traversal outside the project root is not allowed: ${command}`,
-    };
   }
 
   // Check off-limits paths
