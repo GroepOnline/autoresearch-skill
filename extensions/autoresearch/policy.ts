@@ -23,6 +23,16 @@ export interface PolicyDecision {
   reason?: string;
 }
 
+export interface SecurityAuditEntry {
+  type: "security_block";
+  timestamp: string;
+  tool: string;
+  reason: string;
+  path?: string;
+  commandPreview?: string;
+  inputKeys?: string[];
+}
+
 // Module-level diff-size limit. Ralph mode sets this to 10; assisted mode to 50.
 let currentMaxDiffLines = 50;
 
@@ -48,6 +58,9 @@ const DEFAULT_PROTECTED_PATTERNS = [
   /(?:^|\/)\.config\/gcloud\/(?:application_default_credentials\.json|credentials\.db)$/,
   /(?:^|\/)(?:id_rsa|id_ed25519|known_hosts)$/,
   /(?:^|\/).*\.(?:pem|key|p12|pfx)$/,
+  // The security audit trail is evidence: agents must never rewrite it. It
+  // stays ignorable for the post-run audit via RUNTIME_ARTIFACT_PATTERNS.
+  /^\.autoresearch-audit\.jsonl$/,
 ];
 
 const RUNTIME_ARTIFACT_PATTERNS = [
@@ -70,6 +83,9 @@ const RUNTIME_ARTIFACT_PATTERNS = [
   /^\.autoresearch\/worklog\.md$/,
   /^\.autoresearch\/\.autoresearch-off$/,
   /^\.agents\/autoresearch(?:\/|$)/, // legacy runtime layout, still allowed for migration
+  // Security audit trail written by the tool_call guard itself; without this
+  // entry a blocked call's own log file would trip the post-run audit.
+  /^\.autoresearch-audit\.jsonl$/,
 ];
 
 // Whitelist of allowed bash commands with their full allowed argument patterns.
@@ -78,15 +94,24 @@ const ALLOWED_COMMAND_WHITELIST: Array<[string, RegExp | null]> = [
   ["npm", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
   ["yarn", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
   ["pnpm", /^(?:run\s+[\w:-]+|test|build|start|lint|format|typecheck)$/],
-  ["python", /^(?:-m\s+[\w.-]+(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/],
-  ["python3", /^(?:-m\s+[\w.-]+(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/],
+  [
+    "python",
+    /^(?:-m\s+(?:pytest|unittest|json\.tool)(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/,
+  ],
+  [
+    "python3",
+    /^(?:-m\s+(?:pytest|unittest|json\.tool)(?:\s+[\w./:-]+)*|--version|--help|[\w./-]+\.py(?:\s+[\w./:-]+)*)$/,
+  ],
   ["pytest", /^(?:-v|--verbose|-x|--tb=[\w-]+|-k\s+[\w:-]+|[\w./-]+\.py|tests\/?)$/],
   ["node", /^(?:--version|--help|scripts\/[\w./-]+\.(?:mjs|js)|[\w./-]+\.(?:mjs|js))$/],
 
-  // Git read-only operations
+  // Git read-only operations. `branch` is restricted to read-only flags and
+  // plain branch names: `git branch -D main` drops a ref without touching the
+  // working tree, so the diff-based checks can never see it. Deletion/move/
+  // force/upstream flags are therefore not expressible here (fail closed).
   [
     "git",
-    /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+[\w./=-]+)*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
+    /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+(?:-[arvq]+|--show-current|--list(?:\s+[\w.*?/-]+)?|--all|--remotes|--sort(?:=|\s+)[\w.-]+|--format(?:=|\s+)\S+|--contains(?:\s+[\w./-]+)?|--merged(?:\s+[\w./-]+)?|--no-merged(?:\s+[\w./-]+)?|--points-at(?:\s+[\w./-]+)?|[\w][\w./-]*))*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
   ],
 
   // File operations (read-only)
@@ -109,7 +134,7 @@ const SHELL_CONTROL_OPERATOR_PATTERN = /(?:&&|\|\||[;&|<>])/;
 
 // Dangerous patterns that are always blocked (defense in depth)
 const ALWAYS_BLOCKED_PATTERNS = [
-  /\brm\s+-[^\n;|&]*r[^\n;|&]*f\s+(?:\/|~|\$HOME)(?:\s|$)/,
+  /\brm\s+(?=-[^\n;|&]*r)(?=-[^\n;|&]*f)-[^\n;|&]*\s+(?:\/|~|\$HOME|\.{1,2}(?:\/[^\s]*)?|\*\/?)(?:\s|$)/,
   /\bsudo\b/,
   /\bchmod\s+-R\s+777\b/,
   /(?:curl|wget)[^\n|;&]*\|\s*(?:sh|bash)\b/,
@@ -120,13 +145,28 @@ const ALWAYS_BLOCKED_PATTERNS = [
 ];
 
 const SHELL_PROTECTED_PATH_PATTERNS = [
-  /(?:^|[\s"'=<>;&|])(?:\.\/)?\.env(?:\.|[\s"'<>;&|]|$)/,
-  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
-  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:id_rsa|id_ed25519|known_hosts)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|/])(?:\.\/)?\.env(?:\.|[\s"'<>;&|]|$)/,
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:id_rsa|id_ed25519|id_ecdsa|id_dsa|id_xmss|known_hosts)(?=$|[\s"'<>;&|])/,
+  /(?:^|[\s"'=<>;&|])(?:\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:id_rsa|id_ed25519|id_ecdsa|id_dsa|id_xmss|known_hosts)(?=$|[\s"'<>;&|])/,
   /(?:^|[\s"'=<>;&|])(?:\.\/)?[^\s"'<>;&|]*\.(?:pem|key|p12|pfx)(?=$|[\s"'<>;&|])/,
   /(?:^|[\s"'=<>;&|])(?:\/|\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:\.npmrc|\.pypirc|\.netrc)(?=$|[\s"'<>;&|])/,
   /(?:^|[\s"'=<>;&|])(?:\/|\.\/)?(?:[^\s"'<>;&|/]+\/)*(?:\.aws\/credentials|\.config\/gcloud\/(?:application_default_credentials\.json|credentials\.db))(?=$|[\s"'<>;&|])/,
+  // Home-directory and system secret locations, in any nesting position.
+  /[/~]\.ssh(?:[/\s"'<>;&|]|$)/,
+  /[/~]\.aws(?:[/\s"'<>;&|]|$)/,
+  /[/~]\.gnupg(?:[/\s"'<>;&|]|$)/,
+  /[/~]\.docker(?:[/\s"'<>;&|]|$)/,
+  /[/~]\.kube(?:[/\s"'<>;&|]|$)/,
+  /[/~]\.azure(?:[/\s"'<>;&|]|$)/,
+  /(?:^|[/\s"'=<>;&|])\.git-credentials(?=$|[\s"'<>;&|])/,
+  /\/etc\/(?:shadow|gshadow|sudoers)(?=$|[\s"'<>;&|])/,
+  /\/proc\/[^\s"'<>;&|]*\/environ(?:$|[\s"'<>;&|])/,
 ];
+
+// A `..` path component escapes the project root entirely. Git revision
+// ranges (`a..b`) carry no slash and are unaffected.
+const SHELL_PATH_TRAVERSAL_PATTERN =
+  /(?:^|[\s"'=<>;&|])(?:[^\s"'<>;&|]*\/)*\.{2}(?:\/[^\s"'<>;&|]*)?(?=$|[\s"'<>;&|])/;
 
 function normalizeRelativePath(cwd: string, rawPath: string): string {
   const withoutAt = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
@@ -157,7 +197,7 @@ function commandMentionsPath(command: string, relPath: string): boolean {
     .trim();
   if (!normalizedPath || normalizedPath === "." || normalizedPath.includes("<")) return false;
   const pattern = new RegExp(
-    `(?:^|[\\s"'=<>;&|])(?:\\./)?${escapeRegExp(normalizedPath)}(?=$|[\\s"'<>;&|])`
+    `(?:^|[\\s"'=<>;&|/])(?:\\./)?${escapeRegExp(normalizedPath)}(?=$|[\\s"'<>;&|/])`
   );
   return pattern.test(normalizedCommand);
 }
@@ -168,6 +208,67 @@ export function isRuntimeArtifact(relPath: string): boolean {
 
 export function isProtectedPath(relPath: string): boolean {
   return DEFAULT_PROTECTED_PATTERNS.some((pattern) => pattern.test(relPath));
+}
+
+function isSensitivePath(relPath: string): boolean {
+  return [
+    /^\.env(?:\.|$)/,
+    /(?:^|\/)\.env(?:\.|$)/,
+    /(?:^|\/)(?:id_rsa|id_ed25519|id_ecdsa|id_dsa|id_xmss|known_hosts)$/,
+    /(?:^|\/).*\.(?:pem|key|p12|pfx)$/,
+    /(?:^|\/)\.ssh(?:\/|$)/,
+    /(?:^|\/)\.aws(?:\/|$)/,
+    /(?:^|\/)\.gnupg(?:\/|$)/,
+    /(?:^|\/)\.docker(?:\/|$)/,
+    /(?:^|\/)\.kube(?:\/|$)/,
+    /(?:^|\/)\.azure(?:\/|$)/,
+    /(?:^|\/)\.git-credentials$/,
+    /(?:^|\/)credentials(?:\.db|\.json)?$/,
+  ].some((pattern) => pattern.test(relPath));
+}
+
+function redactPathForAudit(rawPath: string): string {
+  const normalized = rawPath.replaceAll(path.sep, "/").trim();
+  if (!normalized) return "[redacted path]";
+  if (isSensitivePath(normalized)) return "[redacted path]";
+  return normalized;
+}
+
+function redactSensitiveText(text: string): string {
+  let redacted = text.replaceAll(path.sep, "/");
+  redacted = redacted.replace(/\bAuthorization\s*:\s*[^'"\n\r]+/gi, "Authorization: [redacted]");
+  redacted = redacted.replace(/\bAuthorization\s*=\s*[^'"\n\r]+/gi, "Authorization=[redacted]");
+  redacted = redacted.replace(/\bBearer\s+[A-Za-z0-9._-]+/gi, "Bearer [redacted]");
+  redacted = redacted.replace(
+    // Env-style names such as OPENAI_API_KEY or AWS_SECRET_ACCESS_KEY carry a
+    // prefix before the sensitive word, so the keyword may sit inside a longer
+    // identifier. Require an identifier boundary, not a bare word boundary.
+    /\b[\w-]*(?:api[-_]?key|private[-_]?key|access[-_]?key|_key|_token|_secret|_password|token|secret|password|passwd|credential)[\w-]*\s*[:=]\s*['"]?[^'"`\s]+['"]?/gi,
+    (match) => {
+      const idx = match.search(/[:=]/);
+      return idx >= 0 ? `${match.slice(0, idx + 1)}[redacted]` : "[redacted]";
+    }
+  );
+  redacted = redacted.replace(/\.env(?:\.[A-Za-z0-9_-]+)?/gi, "[redacted-env]");
+  redacted = redacted.replace(
+    /\b(?:id_rsa|id_ed25519|id_ecdsa|id_dsa|id_xmss|known_hosts)\b/gi,
+    "[redacted-key]"
+  );
+  // Well-known token shapes that appear bare in commands (no name= prefix).
+  redacted = redacted.replace(
+    /\b(?:(?:sk|pk|rk)_(?:live|test)_[A-Za-z0-9]{8,}|(?:ghp|gho|ghu|ghs|ghr)_[A-Za-z0-9]{10,}|github_pat_[A-Za-z0-9_]{10,}|xox[baprs]-[A-Za-z0-9-]{10,}|AKIA[0-9A-Z]{16}|ASIA[0-9A-Z]{16}|eyJ[A-Za-z0-9_-]{10,}\.[A-Za-z0-9_.-]{6,})/g,
+    "[redacted-token]"
+  );
+  // Absolute paths under a user home that hold credential material.
+  redacted = redacted.replace(
+    /\/(?:home|Users)\/[^\s"'<>;&|]*(?:\.ssh|\.aws|\.gnupg|\.docker|\.kube|\.azure|\.git-credentials)[^\s"'<>;&|]*/g,
+    "[redacted path]"
+  );
+  return redacted;
+}
+
+function previewCommand(command: string): string {
+  return redactSensitiveText(command.replace(/\s+/g, " ").trim()).slice(0, 200);
 }
 
 function cleanSectionLine(line: string): string {
@@ -351,23 +452,34 @@ export function evaluateBashCommand(
     };
   }
 
-  // Check always-blocked patterns first (defense in depth)
-  for (const pattern of ALWAYS_BLOCKED_PATTERNS) {
-    if (pattern.test(compact)) {
-      return {
-        block: true,
-        reason: `Autoresearch policy: dangerous pattern detected in command: ${command}`,
-      };
-    }
-  }
-
-  // Check protected paths in command
-  for (const pattern of SHELL_PROTECTED_PATH_PATTERNS) {
-    if (pattern.test(compact.replaceAll("\\", "/"))) {
-      return {
-        block: true,
-        reason: `Autoresearch policy: protected path referenced by shell command: ${command}`,
-      };
+  const slashNormalized = compact.replaceAll("\\", "/");
+  const blockStages = [
+    // Always-blocked patterns first (defense in depth)
+    {
+      text: compact,
+      patterns: ALWAYS_BLOCKED_PATTERNS,
+      message: "dangerous pattern detected in command",
+    },
+    // Protected paths in command
+    {
+      text: slashNormalized,
+      patterns: SHELL_PROTECTED_PATH_PATTERNS,
+      message: "protected path referenced by shell command",
+    },
+    {
+      text: slashNormalized,
+      patterns: [SHELL_PATH_TRAVERSAL_PATTERN],
+      message: "path traversal outside the project root is not allowed",
+    },
+  ];
+  for (const stage of blockStages) {
+    for (const pattern of stage.patterns) {
+      if (pattern.test(stage.text)) {
+        return {
+          block: true,
+          reason: `Autoresearch policy: ${stage.message}: ${command}`,
+        };
+      }
     }
   }
 
@@ -409,6 +521,17 @@ export function evaluateBashCommand(
   return { block: false };
 }
 
+function firstStringValue(rec: Record<string, unknown>, ...keys: string[]): string | null {
+  for (const key of keys) {
+    if (typeof rec[key] === "string") return rec[key] as string;
+  }
+  return null;
+}
+
+function countLines(text: string | null): number {
+  return text ? text.split("\n").length : 0;
+}
+
 function evaluateDiffSize(toolName: string, input: Record<string, unknown>): PolicyDecision {
   if (currentMaxDiffLines <= 0) return { block: false }; // 0 or negative = no limit
   if (!["write", "edit", "str_replace"].includes(toolName)) return { block: false };
@@ -421,32 +544,26 @@ function evaluateDiffSize(toolName: string, input: Record<string, unknown>): Pol
       totalChangedLines = content.split("\n").length;
     }
   } else {
-    const replacements = input.replacements;
-    if (Array.isArray(replacements)) {
-      for (const r of replacements) {
+    // Pi's edit schema is {path, edits:[{oldText,newText}]} with legacy
+    // {oldText,newText}; str_replace variants use old/new or old_str/new_str.
+    const edits = Array.isArray(input.replacements)
+      ? input.replacements
+      : Array.isArray(input.edits)
+        ? input.edits
+        : null;
+    if (edits) {
+      for (const r of edits) {
         if (typeof r === "object" && r) {
           const rec = r as Record<string, unknown>;
-          const oldLines = typeof rec.old === "string" ? rec.old.split("\n").length : 0;
-          const newLines = typeof rec.new === "string" ? rec.new.split("\n").length : 0;
-          totalChangedLines += Math.max(oldLines, newLines);
+          const oldText = firstStringValue(rec, "old", "oldText", "old_str");
+          const newText = firstStringValue(rec, "new", "newText", "new_str");
+          totalChangedLines += Math.max(countLines(oldText), countLines(newText));
         }
       }
     } else {
-      const oldStr =
-        typeof input.old === "string"
-          ? input.old
-          : typeof input.old_str === "string"
-            ? input.old_str
-            : "";
-      const newStr =
-        typeof input.new === "string"
-          ? input.new
-          : typeof input.new_str === "string"
-            ? input.new_str
-            : "";
-      if (oldStr || newStr) {
-        totalChangedLines = Math.max(oldStr.split("\n").length, newStr.split("\n").length);
-      }
+      const oldText = firstStringValue(input, "old", "oldText", "old_str");
+      const newText = firstStringValue(input, "new", "newText", "new_str");
+      totalChangedLines = Math.max(countLines(oldText), countLines(newText));
     }
   }
 
@@ -457,6 +574,36 @@ function evaluateDiffSize(toolName: string, input: Record<string, unknown>): Pol
     };
   }
 
+  return { block: false };
+}
+
+const READ_ONLY_PATH_KEYS = ["path", "file", "filePath", "file_path", "dir", "directory"];
+
+function evaluateReadOnlyPath(
+  cwd: string,
+  rawPath: string,
+  contract: AutoresearchContract
+): PolicyDecision {
+  const dePrefixed = rawPath.startsWith("@") ? rawPath.slice(1) : rawPath;
+  const relPath = normalizeRelativePath(cwd, rawPath);
+  // `~` resolves against the real home directory inside the tool, so treat it
+  // as an escape even though it looks root-relative here.
+  if (relPath.startsWith("..") || dePrefixed.startsWith("~")) {
+    return {
+      block: true,
+      reason: `Autoresearch policy: path escapes project root: ${rawPath}`,
+    };
+  }
+  const asCommandText = dePrefixed.replaceAll("\\", "/");
+  if (
+    isProtectedPath(relPath) ||
+    SHELL_PROTECTED_PATH_PATTERNS.some((pattern) => pattern.test(asCommandText))
+  ) {
+    return { block: true, reason: `Autoresearch policy: protected path blocked: ${rawPath}` };
+  }
+  if (pathMatches(contract.offLimits, relPath)) {
+    return { block: true, reason: `Autoresearch policy: off-limits path blocked: ${relPath}` };
+  }
   return { block: false };
 }
 
@@ -478,6 +625,20 @@ export function evaluateToolCall(
     if (pathDecision.block) return pathDecision;
     const sizeDecision = evaluateDiffSize(toolName, input);
     if (sizeDecision.block) return sizeDecision;
+    return { block: false };
+  }
+
+  // Read-only and custom tools still carry file paths (Pi's read/grep/find/ls
+  // use `path`); gate them so `read .env` cannot bypass the secrets guard.
+  for (const key of READ_ONLY_PATH_KEYS) {
+    const value = input[key];
+    const values = Array.isArray(value) ? value : [value];
+    for (const entry of values) {
+      if (typeof entry === "string" && entry.trim()) {
+        const pathDecision = evaluateReadOnlyPath(cwd, entry, contract);
+        if (pathDecision.block) return pathDecision;
+      }
+    }
   }
 
   return { block: false };
@@ -666,6 +827,50 @@ export function evaluateWorkingTreeMutation(
   }
 
   return { block: false };
+}
+
+const AUDIT_CONTENT_KEYS = new Set([
+  "path",
+  "command",
+  "content",
+  "edits",
+  "replacements",
+  "old",
+  "oldText",
+  "old_str",
+  "new",
+  "newText",
+  "new_str",
+]);
+
+export function buildSecurityAuditEntry(
+  toolName: string,
+  input: Record<string, unknown>,
+  reason: string
+): SecurityAuditEntry {
+  const entry: SecurityAuditEntry = {
+    type: "security_block",
+    timestamp: new Date().toISOString(),
+    tool: toolName,
+    // Policy reasons embed the offending command/path; redact them too so a
+    // blocked `curl -H 'Authorization: Bearer …'` never lands in the audit log.
+    reason: redactSensitiveText(reason),
+  };
+
+  if (typeof input.path === "string" && input.path.trim()) {
+    entry.path = redactPathForAudit(input.path);
+  }
+
+  if (typeof input.command === "string" && input.command.trim()) {
+    entry.commandPreview = previewCommand(input.command);
+  }
+
+  const keys = Object.keys(input)
+    .filter((key) => !AUDIT_CONTENT_KEYS.has(key))
+    .sort();
+  if (keys.length > 0) entry.inputKeys = keys.slice(0, 10);
+
+  return entry;
 }
 
 export function hasAutoresearchSession(cwd: string): boolean {

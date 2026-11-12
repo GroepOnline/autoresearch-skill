@@ -45,6 +45,39 @@ class DecisionTests(unittest.TestCase):
         decision = ar.decide(direction="lower", candidate=50.0, best=100.0, tests_passed=False)
         self.assertEqual(decision.action, "discard")
 
+    def test_scalar_decide_keeps_at_the_threshold_boundary(self):
+        # Shared rule with decideValue/decideMetric (TypeScript): the threshold
+        # comparison is inclusive, so an improvement exactly at the threshold is
+        # a keep. 12.5% of 80 is binary-exact so both languages compare identically.
+        at_boundary = ar.decide(
+            direction="lower", candidate=70.0, best=80.0, min_effect_size_pct=12.5
+        )
+        self.assertEqual(at_boundary.action, "keep")
+        self.assertEqual(at_boundary.improvement_pct, 12.5)
+
+        below_boundary = ar.decide(
+            direction="lower", candidate=70.01, best=80.0, min_effect_size_pct=12.5
+        )
+        self.assertEqual(below_boundary.action, "discard")
+
+    def test_sample_decide_keeps_at_the_threshold_boundary(self):
+        at_boundary = ar.decide_with_samples(
+            candidate=[70.0] * 7,
+            best=[80.0] * 7,
+            direction="lower",
+            min_effect_size_pct=12.5,
+        )
+        self.assertEqual(at_boundary.action, "keep")
+        self.assertEqual(at_boundary.outcome, "conclusive")
+
+        below_boundary = ar.decide_with_samples(
+            candidate=[70.01] * 7,
+            best=[80.0] * 7,
+            direction="lower",
+            min_effect_size_pct=12.5,
+        )
+        self.assertEqual(below_boundary.action, "discard")
+
 
 class JsonlValidationTests(unittest.TestCase):
     def test_validates_and_summarizes_protocol_events(self):
@@ -148,5 +181,225 @@ class JsonlValidationTests(unittest.TestCase):
         self.assertIn("| 1 | 10.0 | baseline | baseline |", dashboard)
 
 
+class SampleStatsTests(unittest.TestCase):
+    def test_compute_stats_summarizes_distribution(self):
+        stats = ar.compute_stats([98, 99, 100, 100, 101, 101, 102])
+        self.assertEqual(stats.count, 7)
+        self.assertEqual(stats.median, 100.0)
+        self.assertEqual(stats.minimum, 98.0)
+        self.assertEqual(stats.maximum, 102.0)
+        self.assertAlmostEqual(stats.mean, 100.142857, places=5)
+        self.assertGreater(stats.cv_pct, 0.0)
+
+    def test_compute_stats_rejects_empty_and_non_finite(self):
+        with self.assertRaises(ValueError):
+            ar.compute_stats([])
+        with self.assertRaises(ValueError):
+            ar.compute_stats([1.0, float("nan")])
+
+
+class PermutationTests(unittest.TestCase):
+    def test_separated_samples_are_significant(self):
+        significance = ar.permutation_test_median(
+            [100, 101, 99, 102, 98, 100, 101],
+            [120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+            alpha=0.05,
+        )
+        self.assertTrue(significance.significant)
+        self.assertLess(significance.p_value, 0.05)
+        self.assertIn("exact_permutation_mean", significance.method)
+
+    def test_overlapping_samples_are_not_significant(self):
+        significance = ar.permutation_test_median(
+            [100, 102, 98, 101, 99, 100, 101],
+            [100, 99, 101, 100, 102, 98, 100],
+            direction="lower",
+            alpha=0.05,
+        )
+        self.assertFalse(significance.significant)
+        self.assertGreaterEqual(significance.p_value, 0.05)
+
+    def test_permutation_test_is_deterministic(self):
+        first = ar.permutation_test_median([1, 2, 3, 4], [5, 6, 7, 8], direction="lower")
+        second = ar.permutation_test_median([1, 2, 3, 4], [5, 6, 7, 8], direction="lower")
+        self.assertEqual(first.p_value, second.p_value)
+
+
+class SampleAwareDecisionTests(unittest.TestCase):
+    def test_full_evidence_is_attached_to_the_decision(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101, 99, 102, 98, 100, 101],
+            best=[120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+        )
+        self.assertEqual(decision.action, "keep")
+        self.assertEqual(decision.outcome, "conclusive")
+        self.assertEqual(decision.policy_version, ar.POLICY_VERSION)
+        self.assertEqual(decision.evidence["candidate"]["count"], 7)
+        self.assertEqual(decision.evidence["best"]["median"], 120.0)
+        self.assertTrue(decision.evidence["significance"]["significant"])
+        self.assertAlmostEqual(decision.improvement_pct, 16.6667, places=3)
+
+    def test_insufficient_samples_are_rejected(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101],
+            best=[120, 121, 119, 122],
+            direction="lower",
+            min_samples=3,
+        )
+        self.assertEqual(decision.action, "discard")
+        self.assertEqual(decision.outcome, "insufficient_samples")
+
+    def test_noise_gate_stops_instead_of_scoring(self):
+        decision = ar.decide_with_samples(
+            candidate=[10, 80, 30, 120, 5, 90],
+            best=[50, 55, 45, 60, 52, 48],
+            direction="lower",
+            noise_floor_pct=10.0,
+        )
+        self.assertEqual(decision.action, "stop")
+        self.assertEqual(decision.outcome, "noisy")
+
+    def test_guardrail_regression_discards_primary_improvement(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101, 99, 102, 98, 100, 101],
+            best=[120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+            guardrails=[{"name": "memory_mb", "direction": "lower", "tolerance_pct": 2.0, "candidate": 110, "best": 100}],
+        )
+        self.assertEqual(decision.action, "discard")
+        self.assertEqual(decision.outcome, "guardrail_failed")
+        self.assertFalse(decision.guardrails[0].passed)
+
+    def test_history_plateau_stops_before_scoring(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101, 99, 102, 98, 100, 101],
+            best=[120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+            history={"runs_since_improvement": 10, "max_runs_without_improvement": 10},
+        )
+        self.assertEqual(decision.action, "stop")
+        self.assertEqual(decision.outcome, "stopped")
+
+
+class StopPolicyTests(unittest.TestCase):
+    def test_stop_policy_budgets_and_limits(self):
+        self.assertTrue(ar.evaluate_stop_policy(remaining_runs=0).stopped)
+        self.assertTrue(ar.evaluate_stop_policy(remaining_minutes=0).stopped)
+        self.assertTrue(ar.evaluate_stop_policy(consecutive_discards=5).stopped)
+        self.assertTrue(ar.evaluate_stop_policy(runs_since_improvement=10).stopped)
+        self.assertFalse(ar.evaluate_stop_policy(consecutive_discards=4, runs_since_improvement=9).stopped)
+
+    def test_stop_policy_ignores_non_numeric_budget_values(self):
+        # Parity with the TS gate: booleans, strings and non-finite numbers do
+        # not participate in the remaining-budget comparisons.
+        for bogus in (False, True, "abc", "0", float("nan"), float("inf")):
+            with self.subTest(remaining_runs=bogus):
+                self.assertFalse(ar.evaluate_stop_policy(remaining_runs=bogus).stopped)
+            with self.subTest(remaining_minutes=bogus):
+                self.assertFalse(ar.evaluate_stop_policy(remaining_minutes=bogus).stopped)
+
+    def test_history_stop_policy_coerces_and_skips_like_typescript(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101, 99, 102, 98, 100, 101],
+            best=[120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+            history={"consecutive_discards": "3", "max_consecutive_discards": "3"},
+        )
+        self.assertEqual(decision.action, "stop")
+        self.assertEqual(decision.outcome, "stopped")
+
+        for history in (
+            {"remaining_runs": False},
+            {"remaining_runs": "abc"},
+            {"remaining_minutes": True},
+            {"max_consecutive_discards": "abc", "consecutive_discards": 99},
+        ):
+            with self.subTest(history=history):
+                decision = ar.decide_with_samples(
+                    candidate=[1.0] * 7,
+                    best=[10.0] * 7,
+                    direction="lower",
+                    history=history,
+                )
+                self.assertNotEqual(decision.action, "stop")
+
+    def test_history_from_events_counts_trailing_discards(self):
+        events = [
+            {"type": "config"},
+            {"type": "decision", "action": "baseline"},
+            {"type": "decision", "action": "keep"},
+            {"type": "decision", "action": "discard"},
+            {"type": "decision", "action": "discard"},
+        ]
+        history = ar.history_from_events(events)
+        self.assertEqual(history["consecutive_discards"], 2)
+        self.assertEqual(history["runs_since_improvement"], 2)
+        self.assertEqual(history["decision_count"], 4)
+
+
+class DecisionFixtureTests(unittest.TestCase):
+    def test_golden_decision_cases_match_python_and_typescript(self):
+        fixtures_path = Path(__file__).parent / "fixtures" / "decision-cases.json"
+        cases = json.loads(fixtures_path.read_text(encoding="utf-8"))
+        for case in cases:
+            with self.subTest(case=case["name"]):
+                decision = ar.decide_with_samples(
+                    candidate=case["candidateSamples"],
+                    best=case.get("bestSamples"),
+                    direction=case["direction"],
+                    policy=ar.DecisionPolicy(**case.get("policy", {})),
+                    guardrails=case.get("guardrails", []),
+                    history=case.get("history"),
+                    simplification=case.get("simplification"),
+                )
+                self.assertEqual(decision.action, case["expectedAction"])
+                self.assertEqual(decision.outcome, case["expectedOutcome"])
+
+
+class RegressionLaneJTests(unittest.TestCase):
+    def test_constant_groups_clear_improvement_is_significant(self):
+        sig = ar.permutation_test_median([1.0] * 7, [10.0] * 7, direction="lower")
+        self.assertTrue(sig.significant, f"p={sig.p_value}")
+        self.assertLess(sig.p_value, 0.05)
+
+    def test_zero_mean_nonconstant_cv_is_unbounded(self):
+        stats = ar.compute_stats([-3, -2, -1, 0, 1, 2, 3])
+        self.assertEqual(stats.cv_pct, float("inf"))
+
+    def test_zero_mean_decision_serializes_to_strict_json(self):
+        decision = ar.decide_with_samples(candidate=[-3, -2, -1, 0, 1, 2, 3], best=None, direction="lower")
+        payload = json.dumps(decision.as_dict(), allow_nan=False)
+        self.assertIn('"cv_pct": null', payload)
+
+    def test_noisy_first_measurement_cannot_become_baseline(self):
+        noisy = ar.decide_with_samples(candidate=[10, 80], best=None, direction="lower", noise_floor_pct=5, min_samples=3)
+        self.assertEqual(noisy.action, "stop")
+        self.assertEqual(noisy.outcome, "noisy")
+        under = ar.decide_with_samples(candidate=[1, 2], best=None, direction="lower", min_samples=3)
+        self.assertEqual(under.action, "discard")
+        self.assertEqual(under.outcome, "insufficient_samples")
+        clean = ar.decide_with_samples(candidate=[10, 10, 10], best=None, direction="lower")
+        self.assertEqual(clean.action, "baseline")
+
+    def test_out_of_range_thresholds_rejected(self):
+        with self.assertRaises(ValueError):
+            ar.decide(direction="lower", candidate=1.0, best=2.0, min_effect_size_pct=-1)
+        with self.assertRaises(ValueError):
+            ar.decide(direction="lower", candidate=1.0, best=2.0, noise_floor_pct=101)
+        with self.assertRaises(ValueError):
+            ar.decide_with_samples(candidate=[1, 2, 3], best=[4, 5, 6], direction="lower", min_effect_size_pct=-0.5)
+
+    def test_scalar_decide_honors_guardrails(self):
+        failing = [{"name": "mem", "direction": "lower", "tolerance_pct": 2.0, "candidate": 150.0, "best": 100.0}]
+        decision = ar.decide(direction="lower", candidate=1.0, best=2.0, guardrails=failing)
+        self.assertEqual(decision.action, "discard")
+        self.assertEqual(decision.outcome, "guardrail_failed")
+        ok = ar.decide(direction="lower", candidate=1.0, best=2.0, guardrails=[{"name": "mem", "direction": "lower", "tolerance_pct": 60.0, "candidate": 150.0, "best": 100.0}])
+        self.assertEqual(ok.action, "keep")
+
+
 if __name__ == "__main__":
+
     unittest.main()

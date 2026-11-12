@@ -55,7 +55,7 @@ For npm packaging:
 npm ci
 npm run validate
 npm run package
-pi install ./dist/groeponline-pi-autoresearch-1.2.0.tgz
+pi install ./dist/groeponline-pi-autoresearch-<version>.tgz
 ```
 
 Or install the published package from npm:
@@ -139,21 +139,29 @@ These files are created in the target project, not in this package repository.
 
 ## Safety model
 
-Autoresearch is intentionally bounded. It stops or blocks continuation on:
+Autoresearch is intentionally bounded. Two different mechanisms enforce those bounds, and only the first one runs on its own.
 
-- corrupt or oversized JSONL state;
-- missing or unresolved experiment contract;
-- dirty git state outside autoresearch runtime artifacts;
-- non-isolated git context unless `/autoresearch new` can create an `autoresearch/*` branch;
-- protected/off-limits path writes;
-- destructive git or shell commands;
-- post-run diff violations, including shell-created files outside scope;
-- failed correctness checks;
-- noisy benchmark results;
-- exhausted run/time budget;
+**1. The loop stops by itself.** `evaluateContinuation` in `extensions/autoresearch/loop.ts` re-checks the following before every run and stops without asking:
+
+- `.autoresearch/.autoresearch-off` pause sentinel;
+- corrupt JSONL state (any parse error);
+- missing configuration (`autoresearch.jsonl` / `autoresearch.md`); the loop re-reads the config, so a contract file that disappears mid-loop is not detected on its own;
+- exhausted run budget or time budget;
+- the last recorded decision has `action: "stop"` (the stop reason comes from the agent);
 - five consecutive discards;
-- plateau after ten runs without improvement;
-- explicit `.autoresearch-off` pause sentinel.
+- plateau after ten runs without improvement.
+
+**2. The tool-call guard blocks a step.** `evaluateToolCall` in `extensions/autoresearch/policy.ts` rejects the offending tool call before it runs, so the write or command never happens and the loop keeps running:
+
+- non-isolated git context (start is blocked unless `/autoresearch new` can create an `autoresearch/*` branch);
+- dirty git state outside autoresearch runtime artifacts;
+- protected/off-limits path writes, and reads of root-escaping, protected, or off-limits paths via any tool's path inputs;
+- destructive or non-whitelisted git and shell commands;
+- `write`/`edit`/`str_replace` payloads over the diff line limit.
+
+**3. The post-run audit stops, it does not prevent.** `evaluateWorkingTreeMutation` runs in the `agent_end` handler, after the turn's changes are already on disk. On a violation it writes the pause sentinel and ends the active loop, but it does not roll the change back and it does not block later `bash`/`write`/`edit`/`str_replace` calls. It is what catches shell-driven mutations such as `python -c`, `sed -i` or `cat > file` that bypass the tool-call guard.
+
+**3. Signals the loop does not inspect.** `evaluateContinuation` reads only the state above; it does not look at test results, benchmark noise, or diff content. A failing test or a noisy benchmark makes `autoresearch_decide` return `discard`/`stop` with the matching outcome, but the autonomous loop keeps running until the agent records that `stop` decision in `autoresearch.jsonl`. Treat correctness and noise as agent obligations, not as an automatic gate: record the stop, or the loop continues.
 
 ## Benchmark contract
 
@@ -170,6 +178,8 @@ For stable decisions, use multiple samples, compare against the current best, an
 ```bash
 python scripts/autoresearch.py parse-metrics benchmark.out
 python scripts/autoresearch.py validate autoresearch.jsonl
+python scripts/autoresearch.py decide --direction lower --samples 12.0 11.8 12.2 --best-samples 12.8 12.9 12.7
+# scalar variant is threshold-only — no statistical evidence:
 python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
 python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```

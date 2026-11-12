@@ -13,6 +13,7 @@ import type { ExtensionAPI } from "@earendil-works/pi-coding-agent";
 import * as fs from "node:fs";
 import * as path from "node:path";
 import { registerAutoresearchCommand } from "./commands.js";
+import { logger } from "./logger.js";
 import type { LoopState } from "./loop.js";
 import {
   buildContinuationMessage,
@@ -22,7 +23,12 @@ import {
   summarizeLoopStop,
   type LoopContinuation,
 } from "./loop.js";
-import { evaluateToolCall, evaluateWorkingTreeMutation, hasAutoresearchSession } from "./policy.js";
+import {
+  buildSecurityAuditEntry,
+  evaluateToolCall,
+  evaluateWorkingTreeMutation,
+  hasAutoresearchSession,
+} from "./policy.js";
 import {
   buildContextInjection,
   delta,
@@ -89,7 +95,25 @@ export default function autoresearchExtension(pi: ExtensionAPI) {
   pi.on("tool_call", async (event, ctx) => {
     if (!hasAutoresearchSession(ctx.cwd)) return;
     const decision = evaluateToolCall(event.toolName, event.input, ctx.cwd);
-    if (decision.block) return { block: true, reason: decision.reason };
+    if (decision.block) {
+      // Best-effort security audit trail for blocked tool calls. The entry is
+      // redacted (paths, commands, credential-shaped values) so the log never
+      // carries secrets.
+      try {
+        const auditPath = path.join(ctx.cwd, ".autoresearch-audit.jsonl");
+        const auditEntry = buildSecurityAuditEntry(
+          event.toolName,
+          event.input,
+          decision.reason ?? "blocked by policy"
+        );
+        fs.appendFileSync(auditPath, `${JSON.stringify(auditEntry)}\n`);
+      } catch (error) {
+        // Best effort: a failed audit write must not break the tool guard.
+        // The logger sanitizes the error so no path or secret leaks.
+        logger.catch("security audit log write", error);
+      }
+      return { block: true, reason: decision.reason };
+    }
   });
 
   // ─── agent_end: update footer + autonomous continuation ─────────────────────

@@ -9,6 +9,13 @@ export interface ArConfig {
   noise_floor_pct?: number;
   max_runs?: number;
   max_minutes?: number;
+  max_consecutive_discards?: number;
+  max_runs_without_improvement?: number;
+  max_diff_lines_assisted?: number;
+  max_diff_lines_ralph?: number;
+  alpha?: number;
+  min_samples?: number;
+  require_significance?: boolean;
   created_at?: string;
   segment?: number;
   // Legacy fields used by earlier extension drafts.
@@ -38,6 +45,11 @@ export interface ArDecision {
   action: "keep" | "discard" | "baseline" | "stop";
   reason: string;
   timestamp?: string;
+  policy_version?: number;
+  outcome?: string;
+  improvement_pct?: number | null;
+  evidence?: Record<string, unknown>;
+  guardrails?: Record<string, unknown>[];
 }
 
 export interface NormalizedResult {
