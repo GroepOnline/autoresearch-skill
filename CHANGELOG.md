@@ -4,6 +4,13 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.10.0] - 2026-11-12
+
+### Added
+- autoresearch v3 fase 8 release (#24)
+
+### Maintenance
+- pin actions to full commit SHA + Dependabot [skip release] (#26)
 ## [1.9.0] - 2026-11-12
 
 ### Changed
