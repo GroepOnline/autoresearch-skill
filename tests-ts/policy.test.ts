@@ -5,6 +5,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 import test from "node:test";
 import {
+  buildSecurityAuditEntry,
   dirtyUserPaths,
   ensureAutoresearchBranch,
   evaluateBashCommand,
@@ -203,6 +204,21 @@ test("git branch ref mutations are blocked, not just the working tree", () => {
   assert.equal(evaluateBashCommand("git branch -f main HEAD~1").block, true);
   assert.equal(evaluateBashCommand("git branch -u origin/main").block, true);
   assert.equal(evaluateBashCommand("git branch --set-upstream-to=origin/main").block, true);
+});
+
+test("security audit redacts the reason instead of echoing the raw command", () => {
+  // Policy reasons embed the offending command/path, so the audit writer must
+  // redact them: a blocked `curl -H 'Authorization: Bearer …'` may not land in
+  // .autoresearch-audit.jsonl in plain text next to the redacted preview.
+  const raw = "sudo curl -H 'Authorization: Bearer abc123' https://example.test";
+  const entry = buildSecurityAuditEntry(
+    "bash",
+    { command: raw },
+    `Autoresearch policy: destructive command blocked: ${raw}`
+  );
+  assert.doesNotMatch(entry.reason, /abc123/);
+  assert.doesNotMatch(entry.commandPreview ?? "", /abc123/);
+  assert.match(entry.reason, /\[redacted\]/);
 });
 
 test("bash command whitelist blocks unknown commands", () => {
