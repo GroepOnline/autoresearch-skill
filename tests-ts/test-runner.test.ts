@@ -18,7 +18,7 @@ function fixture(t: TestContext, files: Record<string, string>): string {
   copyFileSync(join(root, "scripts/run-ts-tests.mjs"), join(cwd, "scripts/run-ts-tests.mjs"));
   copyFileSync(
     join(root, "scripts/node-test-concurrency.mjs"),
-    join(cwd, "scripts/node-test-concurrency.mjs"),
+    join(cwd, "scripts/node-test-concurrency.mjs")
   );
   symlinkSync(join(root, "node_modules"), join(cwd, "node_modules"), "junction");
   writeFileSync(join(cwd, "package.json"), '{"type":"module"}');
@@ -120,7 +120,7 @@ test(
     assert.match(output, /== tests-ts\/c failure\.test\.ts ==/);
     assert.match(output, /legacy intentional failure/);
     assert.doesNotMatch(output, /d after-failure\.test\.ts/);
-  },
+  }
 );
 
 test("test runner discovers all TS files with spaces and preserves process isolation", (t) => {
