@@ -106,7 +106,11 @@ function metricEarlyRejection(
   return null;
 }
 
-function metricImprovementPct(direction: "lower" | "higher", candidate: number, best: number): number {
+function metricImprovementPct(
+  direction: "lower" | "higher",
+  candidate: number,
+  best: number
+): number {
   return direction === "lower"
     ? ((best - candidate) / Math.abs(best)) * 100
     : ((candidate - best) / Math.abs(best)) * 100;
@@ -199,6 +203,150 @@ function stateSummaryLines(state: ReturnType<typeof readState>): string[] {
   if (config.max_runs !== undefined) lines.push(`Budget: max ${config.max_runs} runs`);
   if (config.max_minutes !== undefined) lines.push(`Budget: max ${config.max_minutes} min`);
   return lines;
+}
+
+function validateDecideInputs(params: Record<string, unknown>): boolean {
+  if (!params || typeof params !== "object") {
+    throw new Error("autoresearch_decide: params must be an object");
+  }
+  if (params.direction !== "lower" && params.direction !== "higher") {
+    throw new Error("autoresearch_decide: direction must be 'lower' or 'higher'");
+  }
+  const hasSamples = Array.isArray(params.samples) && params.samples.length > 0;
+  if (!hasSamples && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
+    throw new Error(
+      "autoresearch_decide: candidate must be a finite number when samples are not provided"
+    );
+  }
+  if (
+    params.candidate !== undefined &&
+    params.candidate !== null &&
+    (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))
+  ) {
+    throw new Error("autoresearch_decide: candidate must be a finite number if provided");
+  }
+  if (
+    params.best !== undefined &&
+    params.best !== null &&
+    (typeof params.best !== "number" || !Number.isFinite(params.best))
+  ) {
+    throw new Error("autoresearch_decide: best must be a finite number if provided");
+  }
+  if (params.samples !== undefined) {
+    if (
+      !Array.isArray(params.samples) ||
+      params.samples.length === 0 ||
+      params.samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))
+    ) {
+      throw new Error("autoresearch_decide: samples must be a non-empty array of finite numbers");
+    }
+  }
+  if (params.best_samples !== undefined) {
+    if (
+      !Array.isArray(params.best_samples) ||
+      params.best_samples.length === 0 ||
+      params.best_samples.some(
+        (value: unknown) => typeof value !== "number" || !Number.isFinite(value)
+      )
+    ) {
+      throw new Error(
+        "autoresearch_decide: best_samples must be a non-empty array of finite numbers"
+      );
+    }
+  }
+  return hasSamples;
+}
+
+function validateDecideOptions(params: Record<string, unknown>): void {
+  if (
+    params.min_effect_size_pct !== undefined &&
+    (typeof params.min_effect_size_pct !== "number" ||
+      !Number.isFinite(params.min_effect_size_pct) ||
+      params.min_effect_size_pct < 0 ||
+      params.min_effect_size_pct > 100)
+  ) {
+    throw new Error("autoresearch_decide: min_effect_size_pct must be in [0, 100] if provided");
+  }
+  if (
+    params.noise_floor_pct !== undefined &&
+    (typeof params.noise_floor_pct !== "number" ||
+      !Number.isFinite(params.noise_floor_pct) ||
+      params.noise_floor_pct < 0 ||
+      params.noise_floor_pct > 100)
+  ) {
+    throw new Error("autoresearch_decide: noise_floor_pct must be in [0, 100] if provided");
+  }
+  if (
+    params.alpha !== undefined &&
+    (typeof params.alpha !== "number" ||
+      !Number.isFinite(params.alpha) ||
+      params.alpha <= 0 ||
+      params.alpha > 1)
+  ) {
+    throw new Error("autoresearch_decide: alpha must be in (0, 1] if provided");
+  }
+  if (
+    params.min_samples !== undefined &&
+    (typeof params.min_samples !== "number" ||
+      !Number.isInteger(params.min_samples) ||
+      params.min_samples < 2)
+  ) {
+    throw new Error("autoresearch_decide: min_samples must be an integer >= 2 if provided");
+  }
+  if (
+    params.require_significance !== undefined &&
+    typeof params.require_significance !== "boolean"
+  ) {
+    throw new Error("autoresearch_decide: require_significance must be a boolean if provided");
+  }
+  if (params.guardrails !== undefined && !Array.isArray(params.guardrails)) {
+    throw new Error("autoresearch_decide: guardrails must be an array if provided");
+  }
+  if (
+    params.history !== undefined &&
+    (typeof params.history !== "object" || params.history === null)
+  ) {
+    throw new Error("autoresearch_decide: history must be an object if provided");
+  }
+  if (
+    params.simplification !== undefined &&
+    (typeof params.simplification !== "object" || params.simplification === null)
+  ) {
+    throw new Error("autoresearch_decide: simplification must be an object if provided");
+  }
+}
+
+function parseDecideGuardrails(rawGuardrails: unknown): GuardrailInput[] {
+  if (rawGuardrails === undefined) return [];
+  // validateDecideOptions already rejected non-array values, so this is only a
+  // type narrowing for the map below.
+  const list = Array.isArray(rawGuardrails) ? rawGuardrails : [];
+  return list.map((raw: Record<string, unknown>) => {
+    if (!raw || typeof raw !== "object")
+      throw new Error("autoresearch_decide: each guardrail must be an object");
+    if (typeof raw.name !== "string" || raw.name.trim() === "")
+      throw new Error("autoresearch_decide: guardrail.name is required");
+    if (raw.direction !== undefined && raw.direction !== "lower" && raw.direction !== "higher") {
+      throw new Error("autoresearch_decide: guardrail.direction must be 'lower' or 'higher'");
+    }
+    if (typeof raw.candidate !== "number" || !Number.isFinite(raw.candidate))
+      throw new Error("autoresearch_decide: guardrail.candidate must be a finite number");
+    if (typeof raw.best !== "number" || !Number.isFinite(raw.best))
+      throw new Error("autoresearch_decide: guardrail.best must be a finite number");
+    if (
+      raw.tolerance_pct !== undefined &&
+      (typeof raw.tolerance_pct !== "number" || !Number.isFinite(raw.tolerance_pct))
+    ) {
+      throw new Error("autoresearch_decide: guardrail.tolerance_pct must be a finite number");
+    }
+    return {
+      name: raw.name,
+      direction: raw.direction === "higher" ? "higher" : "lower",
+      tolerance_pct: typeof raw.tolerance_pct === "number" ? raw.tolerance_pct : 2.0,
+      candidate: raw.candidate,
+      best: raw.best,
+    };
+  });
 }
 
 export function registerAutoresearchTools(pi: ExtensionAPI): void {
@@ -336,7 +484,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
   pi.registerTool({
     name: "autoresearch_decide",
     label: "Autoresearch Decide",
-    description: "Decide baseline/keep/discard/stop for a candidate metric. Pass repeated samples for a permutation significance test, guardrails, and stop-policy aware decisions. Returns action, outcome, and the evidence used.",
+    description:
+      "Decide baseline/keep/discard/stop for a candidate metric. Pass repeated samples for a permutation significance test, guardrails, and stop-policy aware decisions. Returns action, outcome, and the evidence used.",
     promptSnippet: "Decide keep/discard/stop for a candidate metric against current best",
     promptGuidelines: [
       "Use autoresearch_decide after measuring a candidate to get a keep/discard/stop decision.",
@@ -346,21 +495,63 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
     parameters: {
       type: "object",
       properties: {
-        candidate: { type: "number", description: "Single candidate value (legacy threshold-only path). Omit when samples are provided." },
+        candidate: {
+          type: "number",
+          description:
+            "Single candidate value (legacy threshold-only path). Omit when samples are provided.",
+        },
         best: { type: "number", description: "Current best metric value. Omit for baseline runs." },
-        samples: { type: "array", items: { type: "number" }, description: "Repeated candidate samples from the benchmark (recommended: 7 measured samples)." },
-        best_samples: { type: "array", items: { type: "number" }, description: "Repeated samples of the current best run for the significance test." },
-        direction: { type: "string", enum: ["lower", "higher"], description: "lower or higher is better." },
-        min_effect_size_pct: { type: "number", description: "Minimum improvement % to keep. Default: 3." },
-        noise_floor_pct: { type: "number", description: "Noise floor (CV %). When exceeded the decision stops instead of scoring. Default: 0." },
-        alpha: { type: "number", description: "Significance level for the permutation test. Default: 0.05." },
-        min_samples: { type: "integer", description: "Minimum samples per side required to score. Default: 3." },
-        require_significance: { type: "boolean", description: "Require a statistically significant improvement before keeping. Default: true." },
-        tests_passed: { type: "boolean", description: "Whether correctness checks passed. Default: true." },
-        noisy: { type: "boolean", description: "Explicit signal that the benchmark was too noisy for a reliable result. Default: false." },
+        samples: {
+          type: "array",
+          items: { type: "number" },
+          description:
+            "Repeated candidate samples from the benchmark (recommended: 7 measured samples).",
+        },
+        best_samples: {
+          type: "array",
+          items: { type: "number" },
+          description: "Repeated samples of the current best run for the significance test.",
+        },
+        direction: {
+          type: "string",
+          enum: ["lower", "higher"],
+          description: "lower or higher is better.",
+        },
+        min_effect_size_pct: {
+          type: "number",
+          description: "Minimum improvement % to keep. Default: 3.",
+        },
+        noise_floor_pct: {
+          type: "number",
+          description:
+            "Noise floor (CV %). When exceeded the decision stops instead of scoring. Default: 0.",
+        },
+        alpha: {
+          type: "number",
+          description: "Significance level for the permutation test. Default: 0.05.",
+        },
+        min_samples: {
+          type: "integer",
+          description: "Minimum samples per side required to score. Default: 3.",
+        },
+        require_significance: {
+          type: "boolean",
+          description:
+            "Require a statistically significant improvement before keeping. Default: true.",
+        },
+        tests_passed: {
+          type: "boolean",
+          description: "Whether correctness checks passed. Default: true.",
+        },
+        noisy: {
+          type: "boolean",
+          description:
+            "Explicit signal that the benchmark was too noisy for a reliable result. Default: false.",
+        },
         guardrails: {
           type: "array",
-          description: "Secondary metrics that must not regress beyond their tolerance. Any failure discards the candidate.",
+          description:
+            "Secondary metrics that must not regress beyond their tolerance. Any failure discards the candidate.",
           items: {
             type: "object",
             properties: {
@@ -376,7 +567,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         },
         history: {
           type: "object",
-          description: "Loop history for stop-policy checks (consecutive discards, plateau, remaining budgets).",
+          description:
+            "Loop history for stop-policy checks (consecutive discards, plateau, remaining budgets).",
           properties: {
             consecutive_discards: { type: "integer" },
             runs_since_improvement: { type: "integer" },
@@ -389,7 +581,8 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         },
         simplification: {
           type: "object",
-          description: "Justification for keeping a statistically tied result that removes complexity without changing behavior.",
+          description:
+            "Justification for keeping a statistically tied result that removes complexity without changing behavior.",
           properties: {
             removes_complexity: { type: "boolean" },
             behavior_unchanged: { type: "boolean" },
@@ -401,77 +594,9 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
       additionalProperties: false,
     },
     async execute(_toolCallId, params, _signal, _onUpdate, _ctx) {
-      // Input validation
-      if (!params || typeof params !== "object") {
-        throw new Error("autoresearch_decide: params must be an object");
-      }
-      if (params.direction !== "lower" && params.direction !== "higher") {
-        throw new Error("autoresearch_decide: direction must be 'lower' or 'higher'");
-      }
-      const hasSamples = Array.isArray(params.samples) && params.samples.length > 0;
-      if (!hasSamples && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
-        throw new Error("autoresearch_decide: candidate must be a finite number when samples are not provided");
-      }
-      if (params.candidate !== undefined && params.candidate !== null && (typeof params.candidate !== "number" || !Number.isFinite(params.candidate))) {
-        throw new Error("autoresearch_decide: candidate must be a finite number if provided");
-      }
-      if (params.best !== undefined && params.best !== null && (typeof params.best !== "number" || !Number.isFinite(params.best))) {
-        throw new Error("autoresearch_decide: best must be a finite number if provided");
-      }
-      if (params.samples !== undefined) {
-        if (!Array.isArray(params.samples) || params.samples.length === 0 || params.samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))) {
-          throw new Error("autoresearch_decide: samples must be a non-empty array of finite numbers");
-        }
-      }
-      if (params.best_samples !== undefined) {
-        if (!Array.isArray(params.best_samples) || params.best_samples.length === 0 || params.best_samples.some((value: unknown) => typeof value !== "number" || !Number.isFinite(value))) {
-          throw new Error("autoresearch_decide: best_samples must be a non-empty array of finite numbers");
-        }
-      }
-      if (params.min_effect_size_pct !== undefined && (typeof params.min_effect_size_pct !== "number" || !Number.isFinite(params.min_effect_size_pct) || params.min_effect_size_pct < 0 || params.min_effect_size_pct > 100)) {
-        throw new Error("autoresearch_decide: min_effect_size_pct must be in [0, 100] if provided");
-      }
-      if (params.noise_floor_pct !== undefined && (typeof params.noise_floor_pct !== "number" || !Number.isFinite(params.noise_floor_pct) || params.noise_floor_pct < 0 || params.noise_floor_pct > 100)) {
-        throw new Error("autoresearch_decide: noise_floor_pct must be in [0, 100] if provided");
-      }
-      if (params.alpha !== undefined && (typeof params.alpha !== "number" || !Number.isFinite(params.alpha) || params.alpha <= 0 || params.alpha > 1)) {
-        throw new Error("autoresearch_decide: alpha must be in (0, 1] if provided");
-      }
-      if (params.min_samples !== undefined && (!Number.isInteger(params.min_samples) || params.min_samples < 2)) {
-        throw new Error("autoresearch_decide: min_samples must be an integer >= 2 if provided");
-      }
-      if (params.require_significance !== undefined && typeof params.require_significance !== "boolean") {
-        throw new Error("autoresearch_decide: require_significance must be a boolean if provided");
-      }
-      if (params.guardrails !== undefined && !Array.isArray(params.guardrails)) {
-        throw new Error("autoresearch_decide: guardrails must be an array if provided");
-      }
-      if (params.history !== undefined && (typeof params.history !== "object" || params.history === null)) {
-        throw new Error("autoresearch_decide: history must be an object if provided");
-      }
-      if (params.simplification !== undefined && (typeof params.simplification !== "object" || params.simplification === null)) {
-        throw new Error("autoresearch_decide: simplification must be an object if provided");
-      }
-
-      const guardrails: GuardrailInput[] = (params.guardrails ?? []).map((raw: Record<string, unknown>) => {
-        if (!raw || typeof raw !== "object") throw new Error("autoresearch_decide: each guardrail must be an object");
-        if (typeof raw.name !== "string" || raw.name.trim() === "") throw new Error("autoresearch_decide: guardrail.name is required");
-        if (raw.direction !== undefined && raw.direction !== "lower" && raw.direction !== "higher") {
-          throw new Error("autoresearch_decide: guardrail.direction must be 'lower' or 'higher'");
-        }
-        if (typeof raw.candidate !== "number" || !Number.isFinite(raw.candidate)) throw new Error("autoresearch_decide: guardrail.candidate must be a finite number");
-        if (typeof raw.best !== "number" || !Number.isFinite(raw.best)) throw new Error("autoresearch_decide: guardrail.best must be a finite number");
-        if (raw.tolerance_pct !== undefined && (typeof raw.tolerance_pct !== "number" || !Number.isFinite(raw.tolerance_pct))) {
-          throw new Error("autoresearch_decide: guardrail.tolerance_pct must be a finite number");
-        }
-        return {
-          name: raw.name,
-          direction: raw.direction === "higher" ? "higher" : "lower",
-          tolerance_pct: typeof raw.tolerance_pct === "number" ? raw.tolerance_pct : 2.0,
-          candidate: raw.candidate,
-          best: raw.best,
-        };
-      });
+      const hasSamples = validateDecideInputs(params);
+      validateDecideOptions(params);
+      const guardrails = parseDecideGuardrails(params.guardrails);
 
       if (!hasSamples) {
         // Guardrails are evaluated *after* the primary decision so a stop or
@@ -487,9 +612,14 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           hasPassedTests: params.tests_passed ?? true,
           isNoisy: params.noisy ?? false,
         });
-        const { results: guardrailResults, failures: guardrailFailures } = evaluateGuardrails(guardrails);
+        const { results: guardrailResults, failures: guardrailFailures } =
+          evaluateGuardrails(guardrails);
         if (guardrailResults.length > 0) result.guardrails = guardrailResults;
-        if (guardrailFailures.length > 0 && result.action !== "stop" && result.outcome !== "invalid") {
+        if (
+          guardrailFailures.length > 0 &&
+          result.action !== "stop" &&
+          result.outcome !== "invalid"
+        ) {
           const guarded: DecisionResult = {
             action: "discard",
             reason: `guardrail regression: ${guardrailFailures.join("; ")}`,
@@ -498,9 +628,15 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
             outcome: "guardrail_failed",
             guardrails: guardrailResults,
           };
-          return { content: [{ type: "text", text: formatDecisionText(guarded) }], details: decisionDetails(guarded) };
+          return {
+            content: [{ type: "text", text: formatDecisionText(guarded) }],
+            details: decisionDetails(guarded),
+          };
         }
-        return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
+        return {
+          content: [{ type: "text", text: formatDecisionText(result) }],
+          details: decisionDetails(result),
+        };
       }
 
       if (params.noisy === true) {
@@ -511,7 +647,10 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
           policyVersion: POLICY_VERSION,
           outcome: "noisy",
         };
-        return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
+        return {
+          content: [{ type: "text", text: formatDecisionText(result) }],
+          details: decisionDetails(result),
+        };
       }
 
       const hasBestSamples = Array.isArray(params.best_samples) && params.best_samples.length > 0;
@@ -541,7 +680,10 @@ export function registerAutoresearchTools(pi: ExtensionAPI): void {
         history: params.history as DecisionHistory | undefined,
         simplification: params.simplification,
       });
-      return { content: [{ type: "text", text: formatDecisionText(result) }], details: decisionDetails(result) };
+      return {
+        content: [{ type: "text", text: formatDecisionText(result) }],
+        details: decisionDetails(result),
+      };
     },
   });
 

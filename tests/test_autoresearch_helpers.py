@@ -291,6 +291,40 @@ class StopPolicyTests(unittest.TestCase):
         self.assertTrue(ar.evaluate_stop_policy(runs_since_improvement=10).stopped)
         self.assertFalse(ar.evaluate_stop_policy(consecutive_discards=4, runs_since_improvement=9).stopped)
 
+    def test_stop_policy_ignores_non_numeric_budget_values(self):
+        # Parity with the TS gate: booleans, strings and non-finite numbers do
+        # not participate in the remaining-budget comparisons.
+        for bogus in (False, True, "abc", "0", float("nan"), float("inf")):
+            with self.subTest(remaining_runs=bogus):
+                self.assertFalse(ar.evaluate_stop_policy(remaining_runs=bogus).stopped)
+            with self.subTest(remaining_minutes=bogus):
+                self.assertFalse(ar.evaluate_stop_policy(remaining_minutes=bogus).stopped)
+
+    def test_history_stop_policy_coerces_and_skips_like_typescript(self):
+        decision = ar.decide_with_samples(
+            candidate=[100, 101, 99, 102, 98, 100, 101],
+            best=[120, 121, 119, 122, 118, 120, 121],
+            direction="lower",
+            history={"consecutive_discards": "3", "max_consecutive_discards": "3"},
+        )
+        self.assertEqual(decision.action, "stop")
+        self.assertEqual(decision.outcome, "stopped")
+
+        for history in (
+            {"remaining_runs": False},
+            {"remaining_runs": "abc"},
+            {"remaining_minutes": True},
+            {"max_consecutive_discards": "abc", "consecutive_discards": 99},
+        ):
+            with self.subTest(history=history):
+                decision = ar.decide_with_samples(
+                    candidate=[1.0] * 7,
+                    best=[10.0] * 7,
+                    direction="lower",
+                    history=history,
+                )
+                self.assertNotEqual(decision.action, "stop")
+
     def test_history_from_events_counts_trailing_discards(self):
         events = [
             {"type": "config"},

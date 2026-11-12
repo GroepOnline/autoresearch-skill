@@ -155,7 +155,7 @@ Autoresearch is intentionally bounded. Two different mechanisms enforce those bo
 
 - non-isolated git context (start is blocked unless `/autoresearch new` can create an `autoresearch/*` branch);
 - dirty git state outside autoresearch runtime artifacts;
-- protected/off-limits path writes;
+- protected/off-limits path writes, and reads of root-escaping, protected, or off-limits paths via any tool's path inputs;
 - destructive or non-whitelisted git and shell commands;
 - `write`/`edit`/`str_replace` payloads over the diff line limit.
 
@@ -178,6 +178,8 @@ For stable decisions, use multiple samples, compare against the current best, an
 ```bash
 python scripts/autoresearch.py parse-metrics benchmark.out
 python scripts/autoresearch.py validate autoresearch.jsonl
+python scripts/autoresearch.py decide --direction lower --samples 12.0 11.8 12.2 --best-samples 12.8 12.9 12.7
+# scalar variant is threshold-only — no statistical evidence:
 python scripts/autoresearch.py decide --direction lower --candidate 12.0 --best 12.8
 python scripts/autoresearch.py dashboard autoresearch.jsonl --output autoresearch-dashboard.md
 ```

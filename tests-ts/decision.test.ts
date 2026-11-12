@@ -68,7 +68,7 @@ test("permutation test separates clear improvements from overlap", () => {
     [100, 101, 99, 102, 98, 100, 101],
     [120, 121, 119, 122, 118, 120, 121],
     "lower",
-    0.05,
+    0.05
   );
   assert.equal(separated.significant, true);
   assert.ok(separated.pValue < 0.05);
@@ -78,7 +78,7 @@ test("permutation test separates clear improvements from overlap", () => {
     [100, 102, 98, 101, 99, 100, 101],
     [100, 99, 101, 100, 102, 98, 100],
     "lower",
-    0.05,
+    0.05
   );
   assert.equal(overlapping.significant, false);
 
@@ -92,7 +92,10 @@ test("stop policy covers budgets, discards, and plateau", () => {
   assert.equal(evaluateStopPolicy({ remaining_minutes: 0 }).stopped, true);
   assert.equal(evaluateStopPolicy({ consecutive_discards: 5 }).stopped, true);
   assert.equal(evaluateStopPolicy({ runs_since_improvement: 10 }).stopped, true);
-  assert.equal(evaluateStopPolicy({ consecutive_discards: 4, runs_since_improvement: 9 }).stopped, false);
+  assert.equal(
+    evaluateStopPolicy({ consecutive_discards: 4, runs_since_improvement: 9 }).stopped,
+    false
+  );
 });
 
 test("decideWithSamples attaches evidence and rejects noise", () => {
@@ -127,15 +130,31 @@ test("decideValue keeps at the threshold boundary like decideWithSamples", () =>
   // improvement exactly at the threshold is a keep, matching
   // decideWithSamples and benchmark-policy.md (improvement_pct >= threshold);
   // 12.5% of 80 is binary-exact so both sides compare identically.
-  assert.equal(decideValue({ candidate: 70, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "keep");
-  assert.equal(decideValue({ candidate: 70.01, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action, "discard");
+  assert.equal(
+    decideValue({ candidate: 70, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action,
+    "keep"
+  );
+  assert.equal(
+    decideValue({ candidate: 70.01, best: 80, direction: "lower", minEffectSizePct: 12.5 }).action,
+    "discard"
+  );
   assert.equal(decideValue({ candidate: 100, direction: "lower" }).action, "baseline");
-  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", hasPassedTests: false }).action, "discard");
-  assert.equal(decideValue({ candidate: 50, best: 100, direction: "lower", isNoisy: true }).action, "stop");
+  assert.equal(
+    decideValue({ candidate: 50, best: 100, direction: "lower", hasPassedTests: false }).action,
+    "discard"
+  );
+  assert.equal(
+    decideValue({ candidate: 50, best: 100, direction: "lower", isNoisy: true }).action,
+    "stop"
+  );
 });
 
 test("constant groups with clear separation are significant", () => {
-  const result = permutationTestMedian([1, 1, 1, 1, 1, 1, 1], [10, 10, 10, 10, 10, 10, 10], "lower");
+  const result = permutationTestMedian(
+    [1, 1, 1, 1, 1, 1, 1],
+    [10, 10, 10, 10, 10, 10, 10],
+    "lower"
+  );
   assert.equal(result.significant, true, `p=${result.pValue}`);
   assert.ok(result.pValue < 0.05);
 });
@@ -146,10 +165,18 @@ test("zero-mean nonconstant samples get an unbounded CV", () => {
 });
 
 test("a noisy or undersampled first measurement cannot become baseline", () => {
-  const noisy = decideWithSamples({ candidateSamples: [10, 80], direction: "lower", policy: { noise_floor_pct: 5, min_samples: 3 } });
+  const noisy = decideWithSamples({
+    candidateSamples: [10, 80],
+    direction: "lower",
+    policy: { noise_floor_pct: 5, min_samples: 3 },
+  });
   assert.equal(noisy.action, "stop");
   assert.equal(noisy.outcome, "noisy");
-  const undersampled = decideWithSamples({ candidateSamples: [1, 2], direction: "lower", policy: { min_samples: 3 } });
+  const undersampled = decideWithSamples({
+    candidateSamples: [1, 2],
+    direction: "lower",
+    policy: { min_samples: 3 },
+  });
   assert.equal(undersampled.action, "discard");
   assert.equal(undersampled.outcome, "insufficient_samples");
   const clean = decideWithSamples({ candidateSamples: [10, 10, 10], direction: "lower" });
@@ -160,14 +187,23 @@ test("scalar path keeps its gate order: correctness and noise outrank a bad best
   // The scalar decision evaluates correctness and noise gates before it even
   // looks at `best`, so a non-finite best must not throw when an earlier gate
   // already decides. This pins the ordering the shared guardrail ladder relies on.
-  assert.doesNotThrow(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false }));
+  assert.doesNotThrow(() =>
+    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false })
+  );
   assert.equal(
-    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false }).outcome,
+    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", hasPassedTests: false })
+      .outcome,
     "invalid"
   );
-  assert.equal(decideValue({ candidate: 5, best: Number.NaN, direction: "lower", isNoisy: true }).outcome, "noisy");
+  assert.equal(
+    decideValue({ candidate: 5, best: Number.NaN, direction: "lower", isNoisy: true }).outcome,
+    "noisy"
+  );
   // Only a reachable best value is validated, and then strictly.
-  assert.throws(() => decideValue({ candidate: 5, best: Number.NaN, direction: "lower" }), /finite number/);
+  assert.throws(
+    () => decideValue({ candidate: 5, best: Number.NaN, direction: "lower" }),
+    /finite number/
+  );
   // A zero best median has no relative improvement metric and needs an absolute win.
   const zeroBestWin = decideValue({ candidate: -1, best: 0, direction: "lower" });
   assert.equal(zeroBestWin.action, "keep");
@@ -180,11 +216,28 @@ test("scalar path keeps its gate order: correctness and noise outrank a bad best
   assert.equal(zeroBestWin.improvementPct, null);
   assert.equal(zeroBestLoss.improvementPct, null);
   assert.equal(decideValue({ candidate: 2, best: 0, direction: "higher" }).improvementPct, null);
-  assert.equal(decideValue({ candidate: Number.NaN, best: 10, direction: "lower" }).outcome, "invalid");
+  assert.equal(
+    decideValue({ candidate: Number.NaN, best: 10, direction: "lower" }).outcome,
+    "invalid"
+  );
 });
 
 test("out-of-range thresholds are rejected at the decision entry points", () => {
-  assert.throws(() => decideValue({ candidate: 104, best: 100, direction: "lower", minEffectSizePct: -5 }), /\[0, 100\]/);
-  assert.throws(() => decideValue({ candidate: 1, best: 2, direction: "lower", noiseFloorPct: -5 }), /\[0, 100\]/);
-  assert.throws(() => decideWithSamples({ candidateSamples: [1, 2, 3], direction: "lower", policy: { min_effect_size_pct: 101 } }), /\[0, 100\]/);
+  assert.throws(
+    () => decideValue({ candidate: 104, best: 100, direction: "lower", minEffectSizePct: -5 }),
+    /\[0, 100\]/
+  );
+  assert.throws(
+    () => decideValue({ candidate: 1, best: 2, direction: "lower", noiseFloorPct: -5 }),
+    /\[0, 100\]/
+  );
+  assert.throws(
+    () =>
+      decideWithSamples({
+        candidateSamples: [1, 2, 3],
+        direction: "lower",
+        policy: { min_effect_size_pct: 101 },
+      }),
+    /\[0, 100\]/
+  );
 });

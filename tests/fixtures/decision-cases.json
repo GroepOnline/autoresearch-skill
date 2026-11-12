@@ -364,5 +364,36 @@
     },
     "expectedAction": "discard",
     "expectedOutcome": "below_threshold"
+  },
+  {
+    "name": "require_significance disabled keeps an above-threshold but non-significant improvement",
+    "direction": "lower",
+    "candidateSamples": [
+      8,
+      12,
+      7,
+      13,
+      9,
+      11,
+      10
+    ],
+    "bestSamples": [
+      9,
+      13,
+      8,
+      14,
+      10,
+      12,
+      11
+    ],
+    "policy": {
+      "min_effect_size_pct": 3.0,
+      "noise_floor_pct": 0.0,
+      "alpha": 0.05,
+      "min_samples": 3,
+      "require_significance": false
+    },
+    "expectedAction": "keep",
+    "expectedOutcome": "conclusive"
   }
 ]

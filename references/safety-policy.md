@@ -36,15 +36,20 @@ Use safer options:
 
 The extension start gate enforces this: starting on `main`/`master` or any non-isolated branch is blocked unless it can auto-switch to `autoresearch/<goal>`.
 
-Discard pattern inside the loop: there is none. `ALLOWED_COMMAND_WHITELIST` in `extensions/autoresearch/policy.ts` (line 107) admits only read-only git subcommands. The `branch` form takes read-only flags and plain branch names only, so ref-mutating forms such as `git branch -D main`, `git branch -m` or `git branch -f` fail the argument pattern:
+Discard pattern inside the loop: there is none. `ALLOWED_COMMAND_WHITELIST` in `extensions/autoresearch/policy.ts` (line 93) admits only read-only git subcommands. The `branch` form takes read-only flags and plain branch names only, so ref-mutating forms such as `git branch -D main`, `git branch -m` or `git branch -f` fail the argument pattern:
 
 ```ts
-["git", /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+(?:-a|-r|-v|-vv|--all|--list|--show-current|--merged|--no-merged|--contains|--format=[\w%()/.:,-]+|[\w][\w./-]*))*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/]
+[
+  "git",
+  /^(?:status|log(?:\s+[\w./=-]+)*|diff(?:\s+[\w./=-]+)*|show(?:\s+[\w./=-]+)*|branch(?:\s+(?:-[arvq]+|--show-current|--list(?:\s+[\w.*?/-]+)?|--all|--remotes|--sort(?:=|\s+)[\w.-]+|--format(?:=|\s+)\S+|--contains(?:\s+[\w./-]+)?|--merged(?:\s+[\w./-]+)?|--no-merged(?:\s+[\w./-]+)?|--points-at(?:\s+[\w./-]+)?|[\w][\w./-]*))*|rev-parse(?:\s+[\w./=-]+)*|ls-files(?:\s+[\w./=-]+)*|ls-tree(?:\s+[\w./=-]+)*)$/,
+];
 ```
 
-Every other subcommand fails the whitelist and is blocked with `command not in whitelist: git`. That includes path-limited forms such as `git clean -fd -- <paths>`, `git restore --source=HEAD --staged --worktree -- <paths>`, `git checkout -- <paths>`, and `git reset --hard`. There is no discard tool either, so an agent that follows this document cannot revert the working tree from inside the loop.
+Every other subcommand fails the whitelist: `git` itself is allowlisted, so these are blocked with `invalid arguments for git`. That includes path-limited forms such as `git clean -fd -- <paths>`, `git restore --source=HEAD --staged --worktree -- <paths>`, `git checkout -- <paths>`, and `git reset --hard`, as well as `git branch` forms that create, rename, or delete branches (only read-only listing flags are allowed). There is no discard tool either, so an agent that follows this document cannot revert the working tree from inside the loop.
 
 Consequence for the loop: a discard is recorded in `autoresearch.jsonl` and the candidate stays in the working tree. The revert happens when a human runs git in their own terminal, or by throwing the run branch/worktree away. Do not promise an agent-driven `git clean`/`git restore` step.
+
+Read-only tools cannot bypass these boundaries. `evaluateToolCall` also checks path-carrying inputs (`path`, `file`, `filePath`, `file_path`, `dir`, `directory`) on every other tool (`evaluateReadOnlyPath`, `policy.ts` line 575): paths that escape the project root, start with `~`, match the protected-path patterns (`.env`, SSH/GPG/AWS keys, `/etc/shadow`, `/proc/*/environ`, …), or hit the contract's off-limits list are blocked. `Files in Scope` does not apply to reads — only root escape, protected paths, and off-limits do.
 
 ## Diff limits
 
@@ -54,12 +59,12 @@ Consequence for the loop: a discard is recorded in `autoresearch.jsonl` and the 
 let currentMaxDiffLines = 50; // Ralph mode sets this to 10; assisted mode to 50
 ```
 
-The start commands set it explicitly: `setMaxDiffLines(50)` for assisted mode (`commands.ts` line 339) and `setMaxDiffLines(10)` for Ralph mode (`commands.ts` line 384). A value of `0` or lower disables the check (`policy.ts` line 469: `if (currentMaxDiffLines <= 0) return { block: false };`). The `max_diff_lines_assisted` / `max_diff_lines_ralph` fields in `types.ts` are declared but not read by any code path, so there is no config override today.
+The start commands set it explicitly: `setMaxDiffLines(50)` for assisted mode (`commands.ts` line 339) and `setMaxDiffLines(10)` for Ralph mode (`commands.ts` line 384). A value of `0` or lower disables the check (`policy.ts` line 529: `if (currentMaxDiffLines <= 0) return { block: false };`). The `max_diff_lines_assisted` / `max_diff_lines_ralph` fields in `types.ts` are declared but not read by any code path, so there is no config override today.
 
 Two checks use that limit:
 
-1. Pre-execution (`evaluateDiffSize`, `policy.ts` line 468): applies only to `write`, `edit`, and `str_replace` tool calls, and counts the lines of the submitted payload, not of the resulting git diff.
-2. Post-run (`evaluateWorkingTreeMutation`, `policy.ts` line 702, called from the `agent_end` handler after every agent turn): counts added-plus-deleted lines from `git diff --numstat` across every dirty non-runtime path and checks each path against the contract. On a violation it writes the pause sentinel and ends the active loop. It does not roll the change back, and it does not block later `bash`, `write`, `edit` or `str_replace` calls (`evaluateToolCall` reads neither the sentinel nor the working tree). This is the check that catches shell-driven mutations such as `python -c`, `sed -i`, `cat > file`, or other bash commands that change files outside the declared scope, after the turn has already run.
+1. Pre-execution (`evaluateDiffSize`, `policy.ts` line 528): applies only to `write`, `edit`, and `str_replace` tool calls, and counts the lines of the submitted payload, not of the resulting git diff.
+2. Post-run (`evaluateWorkingTreeMutation`, `policy.ts` line 800, called from the `agent_end` handler after every agent turn): counts added-plus-deleted lines from `git diff --numstat` across every dirty non-runtime path and checks each path against the contract. On a violation it writes the pause sentinel and ends the active loop. It does not roll the change back, and it does not block later `bash`, `write`, `edit` or `str_replace` calls (`evaluateToolCall` reads neither the sentinel nor the working tree). This is the check that catches shell-driven mutations such as `python -c`, `sed -i`, `cat > file`, or other bash commands that change files outside the declared scope, after the turn has already run.
 
 Tool calls blocked by the pre-execution check are appended to `.autoresearch-audit.jsonl` in the working directory as redacted `security_block` entries (timestamp, tool name, reason, redacted path/command preview). The log never stores file contents or credential-shaped values.
 

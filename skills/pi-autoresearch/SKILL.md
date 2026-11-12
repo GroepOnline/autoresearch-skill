@@ -22,7 +22,7 @@ When installed as a Pi package, the plugin provides:
 
 ### Stop Conditions
 
-The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 runs without improvement), diff-size violation, pause sentinel, corrupt state, dirty git, missing isolated git context (must be `autoresearch/*` branch or worktree), test failures, or benchmark noise.
+The loop auto-stops on: exhausted run or time budget, 5 consecutive discards, plateau (10 runs without improvement), pause sentinel, corrupt state, or a recorded `stop` decision. Git isolation, dirty state, off-limits paths, and diff-size violations are enforced as blocking gates, not stops. Test failures and benchmark noise are not inspected by the loop: `autoresearch_decide` returns `discard`/`stop` for them, and the agent must record that `stop` decision in `autoresearch.jsonl` before the loop actually ends.
 
 ## Start workflow
 
@@ -32,7 +32,7 @@ The loop auto-stops on: budget exhausted, 5 consecutive discards, plateau (10 ru
 4. Establish a baseline with the same benchmark policy used for future runs.
 5. Run one hypothesis per experiment. Keep diffs focused and inside the declared scope.
 6. Parse `METRIC name=value` lines, compute the benchmark summary, and record the result in append-only JSONL.
-7. Use `autoresearch_decide` (or the Python `decide` helper) for keep/discard decisions. Never keep a result worse than the current best.
+7. Use `autoresearch_decide` for keep/discard decisions. Without the plugin, use the Python `decide` helper (`python scripts/autoresearch.py decide ...`) — a skill-only install does not register any `autoresearch_*` tool, so the Python helper is the supported fallback. Run it with repeated samples: `--samples … --best-samples …` performs the same permutation test; the scalar `--candidate/--best` path is threshold-only and carries no statistical evidence. Never keep a result worse than the current best, even when it beats the original baseline.
 8. The plugin auto-generates context injection tables and stop summaries, but it only scaffolds `.autoresearch/worklog.md`. After every run, append one short entry under `## Key Insights`: the hypothesis, the kept/discarded outcome, and the lesson that should steer the next hypothesis.
 9. Stop when a budget, safety rule, noisy benchmark, consecutive discard limit, plateau, or explicit stop decision is reached.
 

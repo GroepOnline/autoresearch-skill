@@ -108,21 +108,24 @@ export function median(values: number[]): number {
 
 export function computeStats(values: number[]): SampleStats {
   if (values.length === 0) throw new Error("computeStats requires at least one sample");
-  if (values.some(value => !Number.isFinite(value))) throw new Error("computeStats requires finite samples");
+  if (values.some((value) => !Number.isFinite(value)))
+    throw new Error("computeStats requires finite samples");
   const count = values.length;
   const mean = values.reduce((sum, value) => sum + value, 0) / count;
-  const stdev = count >= 2
-    ? Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (count - 1))
-    : 0;
+  const stdev =
+    count >= 2
+      ? Math.sqrt(values.reduce((sum, value) => sum + (value - mean) ** 2, 0) / (count - 1))
+      : 0;
   // A zero mean with nonzero spread is the noisiest case, not a clean one:
   // report an unbounded CV so the noise gate can never pass it.
-  const cvPct = count >= 2
-    ? mean !== 0
-      ? (stdev / Math.abs(mean)) * 100
-      : stdev > 0
-        ? Number.POSITIVE_INFINITY
-        : 0
-    : 0;
+  const cvPct =
+    count >= 2
+      ? mean !== 0
+        ? (stdev / Math.abs(mean)) * 100
+        : stdev > 0
+          ? Number.POSITIVE_INFINITY
+          : 0
+      : 0;
   return {
     count,
     median: median(values),
@@ -201,11 +204,14 @@ export function permutationTestMean(
   candidate: number[],
   best: number[],
   direction: Direction,
-  alpha = 0.05,
+  alpha = 0.05
 ): Significance {
-  if (candidate.length === 0 || best.length === 0) throw new Error("permutation test requires samples on both sides");
-  if ([...candidate, ...best].some(value => !Number.isFinite(value))) throw new Error("permutation test requires finite samples");
-  if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
+  if (candidate.length === 0 || best.length === 0)
+    throw new Error("permutation test requires samples on both sides");
+  if ([...candidate, ...best].some((value) => !Number.isFinite(value)))
+    throw new Error("permutation test requires finite samples");
+  if (direction !== "lower" && direction !== "higher")
+    throw new Error("direction must be 'lower' or 'higher'");
 
   const pooled = [...candidate, ...best];
   const candidateCount = candidate.length;
@@ -218,7 +224,7 @@ export function permutationTestMean(
     let total = 0;
     for (const indices of combinations(totalCount, candidateCount)) {
       const selected = new Set(indices);
-      const group = indices.map(index => pooled[index]);
+      const group = indices.map((index) => pooled[index]);
       const complement = pooled.filter((_, index) => !selected.has(index));
       if (orientedMeanDiff(group, complement, direction) >= observed) atLeast++;
       total++;
@@ -231,13 +237,19 @@ export function permutationTestMean(
     };
   }
 
-  const fingerprint = `${direction}|${candidate.map(value => value.toFixed(12)).join(",")}|${best.map(value => value.toFixed(12)).join(",")}`;
+  const fingerprint = `${direction}|${candidate.map((value) => value.toFixed(12)).join(",")}|${best.map((value) => value.toFixed(12)).join(",")}`;
   const random = mulberry32(hashString(fingerprint));
   let atLeast = 0;
   for (let i = 0; i < MONTE_CARLO_PERMUTATIONS; i++) {
     const shuffled = [...pooled];
     shuffle(shuffled, random);
-    if (orientedMeanDiff(shuffled.slice(0, candidateCount), shuffled.slice(candidateCount), direction) >= observed) {
+    if (
+      orientedMeanDiff(
+        shuffled.slice(0, candidateCount),
+        shuffled.slice(candidateCount),
+        direction
+      ) >= observed
+    ) {
       atLeast++;
     }
   }
@@ -256,14 +268,25 @@ export function evaluateStopPolicy(history: DecisionHistory): StopCondition {
   const maxConsecutiveDiscards = history.max_consecutive_discards ?? 5;
   const maxRunsWithoutImprovement = history.max_runs_without_improvement ?? 10;
 
-  if (typeof history.remaining_runs === "number" && Number.isFinite(history.remaining_runs) && history.remaining_runs <= 0) {
+  if (
+    typeof history.remaining_runs === "number" &&
+    Number.isFinite(history.remaining_runs) &&
+    history.remaining_runs <= 0
+  ) {
     return { stopped: true, reason: "run budget exhausted" };
   }
-  if (typeof history.remaining_minutes === "number" && Number.isFinite(history.remaining_minutes) && history.remaining_minutes <= 0) {
+  if (
+    typeof history.remaining_minutes === "number" &&
+    Number.isFinite(history.remaining_minutes) &&
+    history.remaining_minutes <= 0
+  ) {
     return { stopped: true, reason: "time budget exhausted" };
   }
   if (maxConsecutiveDiscards > 0 && consecutiveDiscards >= maxConsecutiveDiscards) {
-    return { stopped: true, reason: `${consecutiveDiscards} consecutive discards (limit ${maxConsecutiveDiscards})` };
+    return {
+      stopped: true,
+      reason: `${consecutiveDiscards} consecutive discards (limit ${maxConsecutiveDiscards})`,
+    };
   }
   if (maxRunsWithoutImprovement > 0 && runsSinceImprovement >= maxRunsWithoutImprovement) {
     return {
@@ -274,7 +297,10 @@ export function evaluateStopPolicy(history: DecisionHistory): StopCondition {
   return { stopped: false, reason: null };
 }
 
-export function evaluateGuardrails(guardrails: GuardrailInput[]): { results: GuardrailResult[]; failures: string[] } {
+export function evaluateGuardrails(guardrails: GuardrailInput[]): {
+  results: GuardrailResult[];
+  failures: string[];
+} {
   const results: GuardrailResult[] = [];
   const failures: string[] = [];
 
@@ -286,7 +312,13 @@ export function evaluateGuardrails(guardrails: GuardrailInput[]): { results: Gua
     const best = guardrail.best;
 
     if (!Number.isFinite(candidate) || !Number.isFinite(best)) {
-      results.push({ name, direction, passed: false, observed_pct: null, tolerance_pct: tolerance });
+      results.push({
+        name,
+        direction,
+        passed: false,
+        observed_pct: null,
+        tolerance_pct: tolerance,
+      });
       failures.push(`${name}: invalid guardrail input`);
       continue;
     }
@@ -318,7 +350,11 @@ export function evaluateGuardrails(guardrails: GuardrailInput[]): { results: Gua
   return { results, failures };
 }
 
-function relativeImprovement(direction: Direction, candidateMedian: number, bestMedian: number): number | null {
+function relativeImprovement(
+  direction: Direction,
+  candidateMedian: number,
+  bestMedian: number
+): number | null {
   if (bestMedian === 0) return null;
   if (direction === "lower") return ((bestMedian - candidateMedian) / Math.abs(bestMedian)) * 100;
   return ((candidateMedian - bestMedian) / Math.abs(bestMedian)) * 100;
@@ -361,15 +397,24 @@ function resolvePolicy(policy?: DecisionPolicy): ResolvedPolicy {
 }
 
 function assertPolicyBounds(direction: Direction, policy: ResolvedPolicy): void {
-  if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
+  if (direction !== "lower" && direction !== "higher")
+    throw new Error("direction must be 'lower' or 'higher'");
   if (!(policy.alpha > 0 && policy.alpha <= 1)) throw new Error("alpha must be in (0, 1]");
   if (policy.minSamples < 2) throw new Error("min_samples must be at least 2");
-  if (!(policy.minEffectSizePct >= 0 && policy.minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
-  if (!(policy.noiseFloorPct >= 0 && policy.noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
+  if (!(policy.minEffectSizePct >= 0 && policy.minEffectSizePct <= 100))
+    throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(policy.noiseFloorPct >= 0 && policy.noiseFloorPct <= 100))
+    throw new Error("noise_floor_pct must be in [0, 100]");
 }
 
 function invalidDecision(reason: string): DecisionResult {
-  return { action: "discard", reason, improvementPct: null, policyVersion: POLICY_VERSION, outcome: "invalid" };
+  return {
+    action: "discard",
+    reason,
+    improvementPct: null,
+    policyVersion: POLICY_VERSION,
+    outcome: "invalid",
+  };
 }
 
 /** Evaluate gates in order and return the first decision that fires. */
@@ -381,9 +426,12 @@ function firstDecision(...gates: (() => DecisionResult | null)[]): DecisionResul
   return null;
 }
 
-function rejectInvalidMeasurement(candidateSamples: number[], hasPassedTests: boolean | undefined): DecisionResult | null {
+function rejectInvalidMeasurement(
+  candidateSamples: number[],
+  hasPassedTests: boolean | undefined
+): DecisionResult | null {
   if (candidateSamples.length === 0) return invalidDecision("candidate has no samples");
-  if (candidateSamples.some(value => !Number.isFinite(value))) {
+  if (candidateSamples.some((value) => !Number.isFinite(value))) {
     return invalidDecision("candidate samples contain non-finite values");
   }
   if (hasPassedTests === false) return invalidDecision("correctness checks failed");
@@ -404,7 +452,7 @@ function rejectOnStopPolicy(history?: DecisionHistory): DecisionResult | null {
 }
 
 function rejectNonFiniteBest(bestSamples: number[]): DecisionResult | null {
-  if (bestSamples.some(value => !Number.isFinite(value))) {
+  if (bestSamples.some((value) => !Number.isFinite(value))) {
     return invalidDecision("best samples contain non-finite values");
   }
   return null;
@@ -461,7 +509,10 @@ function pairMeasurementGate(
   policy: ResolvedPolicy,
   evidence: Record<string, unknown>
 ): DecisionResult | null {
-  if (policy.noiseFloorPct > 0 && (candidateStats.cvPct > policy.noiseFloorPct || bestStats.cvPct > policy.noiseFloorPct)) {
+  if (
+    policy.noiseFloorPct > 0 &&
+    (candidateStats.cvPct > policy.noiseFloorPct || bestStats.cvPct > policy.noiseFloorPct)
+  ) {
     return {
       action: "stop",
       reason: `benchmark noise exceeds floor — candidate CV ${candidateStats.cvPct.toFixed(2)}% / best CV ${bestStats.cvPct.toFixed(2)}% (floor ${policy.noiseFloorPct.toFixed(2)}%)`,
@@ -520,15 +571,29 @@ function simplificationDecision(args: {
   simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
   evidence: Record<string, unknown>;
 }): DecisionResult | null {
-  const { direction, policy, candidateSamples, bestSamples, significance, improvement, simplification, evidence } =
-    args;
-  const tied = !significance.significant
-    && simplification?.removes_complexity === true
-    && simplification.behavior_unchanged === true;
+  const {
+    direction,
+    policy,
+    candidateSamples,
+    bestSamples,
+    significance,
+    improvement,
+    simplification,
+    evidence,
+  } = args;
+  const tied =
+    !significance.significant &&
+    simplification?.removes_complexity === true &&
+    simplification.behavior_unchanged === true;
   if (!tied) return null;
 
   const reverseDirection: Direction = direction === "lower" ? "higher" : "lower";
-  const worse = permutationTestMean(candidateSamples, bestSamples, reverseDirection, policy.alpha).significant;
+  const worse = permutationTestMean(
+    candidateSamples,
+    bestSamples,
+    reverseDirection,
+    policy.alpha
+  ).significant;
   if (worse) {
     return {
       action: "discard",
@@ -541,7 +606,8 @@ function simplificationDecision(args: {
   }
   return {
     action: "keep",
-    reason: "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
+    reason:
+      "statistically tied result kept for simplification (complexity removed, behavior unchanged)",
     improvementPct: improvement,
     policyVersion: POLICY_VERSION,
     outcome: "simplification",
@@ -646,7 +712,16 @@ function decideFromSamples(args: {
   evidence: Record<string, unknown>;
   simplification?: { removes_complexity?: boolean; behavior_unchanged?: boolean };
 }): DecisionResult {
-  const { direction, policy, candidateSamples, bestSamples, candidateStats, bestStats, threshold, evidence } = args;
+  const {
+    direction,
+    policy,
+    candidateSamples,
+    bestSamples,
+    candidateStats,
+    bestStats,
+    threshold,
+    evidence,
+  } = args;
 
   const significance = permutationTestMean(candidateSamples, bestSamples, direction, policy.alpha);
   evidence.significance = {
@@ -679,7 +754,13 @@ function decideFromSamples(args: {
   });
   if (simplificationOutcome) return simplificationOutcome;
 
-  const zeroOutcome = zeroMedianDecision({ direction, candidateStats, bestStats, significance, evidence });
+  const zeroOutcome = zeroMedianDecision({
+    direction,
+    candidateStats,
+    bestStats,
+    significance,
+    evidence,
+  });
   if (zeroOutcome) return zeroOutcome;
 
   return thresholdDecision({ policy, improvement, threshold, significance, evidence });
@@ -710,7 +791,11 @@ export function decideWithSamples(params: {
   if (inputRejection) return inputRejection;
 
   const candidateStats = computeStats(candidateSamples);
-  const candidateRejection = candidateMeasurementGate(candidateStats, bestSamples.length > 0, policy);
+  const candidateRejection = candidateMeasurementGate(
+    candidateStats,
+    bestSamples.length > 0,
+    policy
+  );
   if (candidateRejection) return candidateRejection;
 
   const bestStats = computeStats(bestSamples);
@@ -741,10 +826,17 @@ export function decideWithSamples(params: {
   });
 }
 
-function assertScalarPolicy(direction: Direction, minEffectSizePct: number, noiseFloorPct: number): void {
-  if (direction !== "lower" && direction !== "higher") throw new Error("direction must be 'lower' or 'higher'");
-  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100)) throw new Error("min_effect_size_pct must be in [0, 100]");
-  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100)) throw new Error("noise_floor_pct must be in [0, 100]");
+function assertScalarPolicy(
+  direction: Direction,
+  minEffectSizePct: number,
+  noiseFloorPct: number
+): void {
+  if (direction !== "lower" && direction !== "higher")
+    throw new Error("direction must be 'lower' or 'higher'");
+  if (!(minEffectSizePct >= 0 && minEffectSizePct <= 100))
+    throw new Error("min_effect_size_pct must be in [0, 100]");
+  if (!(noiseFloorPct >= 0 && noiseFloorPct <= 100))
+    throw new Error("noise_floor_pct must be in [0, 100]");
 }
 
 function rejectScalarInput(
@@ -832,13 +924,24 @@ export function decideValue(params: {
   // threshold tie (improvement_pct >= max(min_effect_size_pct, noise_floor_pct)).
   if (improvementPct >= threshold) {
     const text = `improved ${improvementPct.toFixed(2)}% over current best (threshold ${threshold.toFixed(2)}%)`;
-    return { action: "keep", reason: text, improvementPct, policyVersion: POLICY_VERSION, outcome: "conclusive" };
+    return {
+      action: "keep",
+      reason: text,
+      improvementPct,
+      policyVersion: POLICY_VERSION,
+      outcome: "conclusive",
+    };
   }
 
   const text = `improvement ${improvementPct.toFixed(2)}% is below threshold ${threshold.toFixed(2)}% or worse than best`;
-  return { action: "discard", reason: text, improvementPct, policyVersion: POLICY_VERSION, outcome: "below_threshold" };
+  return {
+    action: "discard",
+    reason: text,
+    improvementPct,
+    policyVersion: POLICY_VERSION,
+    outcome: "below_threshold",
+  };
 }
-
 
 export function formatDecisionText(result: DecisionResult): string {
   return `${result.action.toUpperCase()} — ${result.reason}`;

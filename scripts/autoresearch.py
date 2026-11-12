@@ -518,19 +518,40 @@ def permutation_test_mean(
 permutation_test_median = permutation_test_mean
 
 
+def _strict_finite_number(value: Any) -> float | None:
+    """Mirror the TS `typeof === "number" && Number.isFinite` gate."""
+    return float(value) if _is_number(value) else None
+
+
+def _coerced_finite_number(value: Any) -> float | None:
+    """Mirror the JS `>`/`>=` coercion used by the TS stop-policy comparisons.
+
+    Returns None when the value cannot coerce to a finite number — the
+    comparison is then skipped, matching how JS treats NaN and non-numeric
+    values.
+    """
+    if value is None:
+        return None
+    try:
+        coerced = float(value)
+    except (TypeError, ValueError):
+        return None
+    return coerced if math.isfinite(coerced) else None
+
+
 def evaluate_stop_policy(
     *,
-    consecutive_discards: int = 0,
-    runs_since_improvement: int = 0,
-    max_consecutive_discards: int = 5,
-    max_runs_without_improvement: int = 10,
+    consecutive_discards: float = 0,
+    runs_since_improvement: float = 0,
+    max_consecutive_discards: float = 5,
+    max_runs_without_improvement: float = 10,
     remaining_runs: float | None = None,
     remaining_minutes: float | None = None,
 ) -> StopCondition:
     """Decide whether the loop budget or exploration signals require a stop."""
-    if remaining_runs is not None and remaining_runs <= 0:
+    if (safe_remaining_runs := _strict_finite_number(remaining_runs)) is not None and safe_remaining_runs <= 0:
         return StopCondition(True, "run budget exhausted")
-    if remaining_minutes is not None and remaining_minutes <= 0:
+    if (safe_remaining_minutes := _strict_finite_number(remaining_minutes)) is not None and safe_remaining_minutes <= 0:
         return StopCondition(True, "time budget exhausted")
     if max_consecutive_discards > 0 and consecutive_discards >= max_consecutive_discards:
         return StopCondition(True, f"{consecutive_discards} consecutive discards (limit {max_consecutive_discards})")
@@ -652,13 +673,15 @@ def _stop_from_history(history: Mapping[str, Any] | None) -> Decision | None:
     if not history:
         return None
     stop = evaluate_stop_policy(
-        consecutive_discards=int(history.get("consecutive_discards", 0) or 0),
-        runs_since_improvement=int(history.get("runs_since_improvement", 0) or 0),
+        consecutive_discards=_coerced_finite_number(history.get("consecutive_discards", 0)) or 0,
+        runs_since_improvement=_coerced_finite_number(history.get("runs_since_improvement", 0)) or 0,
         max_consecutive_discards=(
-            int(history["max_consecutive_discards"]) if history.get("max_consecutive_discards") is not None else 5
+            _coerced_finite_number(history["max_consecutive_discards"]) or 0
+            if history.get("max_consecutive_discards") is not None
+            else 5
         ),
         max_runs_without_improvement=(
-            int(history["max_runs_without_improvement"])
+            _coerced_finite_number(history["max_runs_without_improvement"]) or 0
             if history.get("max_runs_without_improvement") is not None
             else 10
         ),
