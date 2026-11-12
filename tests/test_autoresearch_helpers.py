@@ -45,6 +45,39 @@ class DecisionTests(unittest.TestCase):
         decision = ar.decide(direction="lower", candidate=50.0, best=100.0, tests_passed=False)
         self.assertEqual(decision.action, "discard")
 
+    def test_scalar_decide_keeps_at_the_threshold_boundary(self):
+        # Shared rule with decideValue/decideMetric (TypeScript): the threshold
+        # comparison is inclusive, so an improvement exactly at the threshold is
+        # a keep. 12.5% of 80 is binary-exact so both languages compare identically.
+        at_boundary = ar.decide(
+            direction="lower", candidate=70.0, best=80.0, min_effect_size_pct=12.5
+        )
+        self.assertEqual(at_boundary.action, "keep")
+        self.assertEqual(at_boundary.improvement_pct, 12.5)
+
+        below_boundary = ar.decide(
+            direction="lower", candidate=70.01, best=80.0, min_effect_size_pct=12.5
+        )
+        self.assertEqual(below_boundary.action, "discard")
+
+    def test_sample_decide_keeps_at_the_threshold_boundary(self):
+        at_boundary = ar.decide_with_samples(
+            candidate=[70.0] * 7,
+            best=[80.0] * 7,
+            direction="lower",
+            min_effect_size_pct=12.5,
+        )
+        self.assertEqual(at_boundary.action, "keep")
+        self.assertEqual(at_boundary.outcome, "conclusive")
+
+        below_boundary = ar.decide_with_samples(
+            candidate=[70.01] * 7,
+            best=[80.0] * 7,
+            direction="lower",
+            min_effect_size_pct=12.5,
+        )
+        self.assertEqual(below_boundary.action, "discard")
+
 
 class JsonlValidationTests(unittest.TestCase):
     def test_validates_and_summarizes_protocol_events(self):

@@ -28,24 +28,26 @@ For `direction=lower`:
 
 - `improvement_pct = (median_best - median_new) / abs(median_best) * 100`
 - keep if `improvement_pct >= max(min_effect_size_pct, noise_floor_pct)`
-- discard if equal, noisy, failing, or worse than best
+- discard if below the threshold, noisy, failing, or worse than best
 
 For `direction=higher`:
 
 - `improvement_pct = (median_new - median_best) / abs(median_best) * 100`
 - keep if `improvement_pct >= max(min_effect_size_pct, noise_floor_pct)`
-- discard if equal, noisy, failing, or worse than best
+- discard if below the threshold, noisy, failing, or worse than best
+
+The comparison is inclusive on every decision path: `decideValue` and `decideMetric` (`extensions/autoresearch/decision.ts`, `extensions/autoresearch/tools.ts`), `decideWithSamples`, and the Python `decide` / `decide_with_samples` helpers all use `>=`, so a result exactly at the threshold is a keep. The scalar boundary is pinned by `tests-ts/decision.test.ts` ("decideValue keeps at the threshold boundary like decideWithSamples") and by `DecisionTests.test_scalar_decide_keeps_at_the_threshold_boundary` on the Python side.
 
 A result that beats the original baseline but is worse than the current best is a discard by default.
 
-## Ties and simplification
+## Statistical ties and simplification
 
-A threshold-tied result may be kept only when all of these are true:
+This is a separate axis from the threshold tie above. When the permutation test is not significant (`p >= alpha`), the candidate is discarded unless `simplification` evidence is supplied:
 
-- tests pass
-- behavior is unchanged
-- the diff removes complexity or risk
-- the reason is recorded in the decision event
+- `removes_complexity: true`
+- `behavior_unchanged: true`
+
+`_simplification_decision` (Python) and `simplificationDecision` (TypeScript) then run the reverse-direction permutation test, so a statistically tied simplification is kept (`outcome: "simplification"`) while a significantly worse one is discarded. Tests must pass on both paths, and the reason is recorded in the decision event.
 
 ## Noisy results
 
