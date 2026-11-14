@@ -4,6 +4,10 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.11.0] - 2026-11-14
+
+### Maintenance
+- bump the actions group across 1 directory with 3 updates (#27)
 ## [1.10.0] - 2026-11-12
 
 ### Added
