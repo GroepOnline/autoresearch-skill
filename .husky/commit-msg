@@ -1,0 +1,3 @@
+set -eu
+repo_root="$(git rev-parse --show-toplevel)"
+bash "$repo_root/scripts/check-conventional-commit.sh" "$1"
