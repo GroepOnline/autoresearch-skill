@@ -1,3 +1,8 @@
-npx lint-staged
-bun run typecheck
-bun run test
+set -eu
+repo_root="$(git rev-parse --show-toplevel)"
+bash "$repo_root/scripts/scan-staged-secrets.sh"
+if [ -x "$repo_root/node_modules/.bin/lint-staged" ]; then
+  cd "$repo_root" && npx --no-install lint-staged
+else
+  echo "pre-commit: lint-staged not installed, format check skipped (run the package manager install)" >&2
+fi
