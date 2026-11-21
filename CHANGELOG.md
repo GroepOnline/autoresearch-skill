@@ -4,6 +4,10 @@ All notable changes to the Autoresearch Skill project.
 
 ## [Unreleased]
 
+## [1.12.0] - 2026-11-21
+
+### Changed
+- Add pre-commit hooks (husky + lint-staged + prettier) (#28)
 ## [1.11.0] - 2026-11-14
 
 ### Maintenance
